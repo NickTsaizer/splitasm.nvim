@@ -27,7 +27,7 @@ View `objdump` output beside your source and keep both sides in sync while you r
 
 ```lua
 {
-  "author/splitasm.nvim",
+  "NickTsaizer/splitasm.nvim",
   cmd = {
     "SplitAsm",
     "SplitAsmOpen",
