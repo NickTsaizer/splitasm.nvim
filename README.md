@@ -2,6 +2,9 @@
 
 View `objdump` output beside your source and keep both sides in sync while you read compiled code.
 
+![shaderdebug preview](./doc/assets/splitasm_preview.gif)
+
+
 ## Features
 
 - Open a vertical assembly split for the current source file
