@@ -176,7 +176,7 @@ function M.open(exec_path_override)
     local filtered_lines = splitasm_state.apply_parsed_asm(parsed)
 
     view.ensure_asm_buffer(state)
-    if not view.render_asm_buffer(state, filtered_lines) then
+    if not view.render_asm_buffer(state, filtered_lines, { source_row_colors = config.source_row_colors }) then
         return
     end
 

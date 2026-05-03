@@ -2,6 +2,7 @@ package.path = "/home/nick/.config/nvim/lua/?.lua;/home/nick/.config/nvim/lua/?/
 
 local splitasm = require("splitasm")
 local splitasm_config = require("splitasm.config")
+local source_row_colors = require("splitasm.source_row_colors")
 local splitasm_state = require("splitasm.state")
 
 local M = {}
@@ -44,6 +45,10 @@ local function count_keys(tbl)
         count = count + 1
     end
     return count
+end
+
+local function extmarks_with_details(bufnr, namespace)
+    return vim.api.nvim_buf_get_extmarks(bufnr, namespace, 0, -1, { details = true })
 end
 
 local function with_mock_runtime(mock_runtime, callback)
@@ -248,6 +253,10 @@ local function test_setup_validates_publishable_user_config()
     ok, err = pcall(splitasm.setup, { compiler_cmd = 42 })
     assert_eq(ok, false, "setup should reject non-string compiler commands")
     assert_match(err, "compiler_cmd must be a string or nil", "setup should describe invalid compiler_cmd values")
+
+    ok, err = pcall(splitasm.setup, { source_row_colors = "yes" })
+    assert_eq(ok, false, "setup should reject non-boolean source_row_colors values")
+    assert_match(err, "source_row_colors must be a boolean", "setup should describe invalid source_row_colors values")
 end
 
 local function test_open_returns_early_when_runtime_has_no_output()
@@ -345,11 +354,181 @@ local function test_open_renders_filtered_output_and_syncs_from_source_cursor()
     assert_eq(state.file_line_maps[source_path][2].start_line, 2, "line 2 should map to the first instruction")
     assert_eq(state.file_line_maps[source_path][4].start_line, 3, "line 4 should map to the return instruction")
     assert_eq(vim.api.nvim_win_get_cursor(state.asm_win)[1], 2, "open should jump to the current source mapping")
+    assert_eq(state.asm_metadata[2].source_id, source_path .. ":2", "state should keep stable source metadata for first instruction")
+    assert_eq(state.asm_metadata[2].lane_index, 1, "state should record the first lane for a mapped source row")
+    assert_eq(state.asm_metadata[3].source_id, source_path .. ":4", "state should keep stable source metadata for later instruction")
+    assert_eq(state.asm_metadata[3].lane_index, 1, "a new source row should restart lane numbering")
+
+    local marks = extmarks_with_details(state.asm_buf, source_row_colors.get_namespace())
+    assert_eq(#marks, 2, "open should highlight all mapped instruction rows")
+    assert_eq(marks[1][2], 1, "first mapped instruction should keep its source-row highlight")
+    assert_eq(marks[2][2], 2, "second mapped instruction should keep its source-row highlight")
+    assert_eq(
+        marks[1][4].hl_group,
+        source_row_colors.group_for_source_line(source_path .. ":2", 2).text,
+        "first mapped instruction should use a stable source text highlight group"
+    )
+    assert_eq(
+        marks[1][4].number_hl_group,
+        source_row_colors.group_for_source_line(source_path .. ":2", 2).number,
+        "first mapped instruction should use a stable source line-number highlight group"
+    )
+    assert_eq(
+        marks[2][4].hl_group,
+        source_row_colors.group_for_source_line(source_path .. ":4", 4).text,
+        "later instruction should use a stable source text highlight group"
+    )
+    assert_eq(
+        marks[2][4].number_hl_group,
+        source_row_colors.group_for_source_line(source_path .. ":4", 4).number,
+        "later instruction should use a stable source line-number highlight group"
+    )
 
     vim.api.nvim_set_current_win(state.source_win)
     vim.api.nvim_win_set_cursor(state.source_win, { 4, 0 })
     vim.api.nvim_exec_autocmds("CursorMoved", { modeline = false })
     assert_eq(vim.api.nvim_win_get_cursor(state.asm_win)[1], 3, "source cursor movement should sync the asm cursor after open")
+end
+
+local function test_open_can_disable_source_row_colors()
+    cleanup_splitasm()
+
+    -- Arrange
+    local source_path = write_source_file("no-colors", {
+        "int main(void) {",
+        "  return 0;",
+        "}",
+    })
+    local asm_output = table.concat({
+        source_path .. ":2",
+        "0000000000000000 <main()>:",
+        "  0000: ret",
+    }, "\n")
+
+    vim.cmd("edit " .. vim.fn.fnameescape(source_path))
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+    -- Act
+    with_mock_runtime({
+        load_asm_session = function()
+            return {
+                asm_output = asm_output,
+                full_exec_path = "/tmp/demo-bin",
+            }
+        end,
+    }, function()
+        with_captured_notify(function()
+            splitasm.setup({ auto_sync = true, clean_asm = true, source_row_colors = false })
+            splitasm.open("./demo-bin")
+        end)
+    end)
+
+    -- Assert
+    local state = splitasm_state.get()
+    assert_eq(#extmarks_with_details(state.asm_buf, source_row_colors.get_namespace()), 0, "disabled source row colors should skip row highlights")
+end
+
+local function test_open_repaints_stable_source_row_colors_across_refreshes()
+    cleanup_splitasm()
+
+    -- Arrange
+    local source_path = write_source_file("stable-colors", {
+        "int helper(void) {",
+        "  return 1;",
+        "}",
+    })
+    local refresh_outputs = {
+        table.concat({
+            source_path .. ":2",
+            "0000000000000000 <main()>:",
+            "  0000: mov eax,0x1",
+            source_path .. ":2",
+            "  0004: ret",
+        }, "\n"),
+        table.concat({
+            source_path .. ":2",
+            "0000000000000000 <main()>:",
+            "  0000: ret",
+        }, "\n"),
+    }
+    local runtime_call_count = 0
+
+    vim.cmd("edit " .. vim.fn.fnameescape(source_path))
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+    -- Act
+    with_mock_runtime({
+        load_asm_session = function()
+            runtime_call_count = runtime_call_count + 1
+            return {
+                asm_output = refresh_outputs[runtime_call_count],
+                full_exec_path = "/tmp/demo-bin",
+            }
+        end,
+    }, function()
+        with_captured_notify(function()
+            splitasm.setup({ auto_sync = true, clean_asm = true, source_row_colors = true })
+            splitasm.open("./demo-bin")
+
+            local state = splitasm_state.get()
+            local first_marks = extmarks_with_details(state.asm_buf, source_row_colors.get_namespace())
+            local first_group = first_marks[1][4].hl_group
+
+            splitasm.open("./demo-bin")
+
+            local second_marks = extmarks_with_details(state.asm_buf, source_row_colors.get_namespace())
+            assert_eq(#second_marks, 1, "refresh should repaint current mapped rows in the source-row namespace")
+            assert_eq(second_marks[1][4].hl_group, first_group, "refresh should keep the same source text highlight group for the same source identity")
+        end)
+    end)
+end
+
+local function test_open_keeps_same_tone_within_source_row_and_shifts_between_source_rows()
+    cleanup_splitasm()
+
+    -- Arrange
+    local source_path = write_source_file("lane-tones", {
+        "int helper(void) {",
+        "  return 1;",
+        "}",
+    })
+    local asm_output = table.concat({
+        source_path .. ":2",
+        "0000000000000000 <main()>:",
+        "  0000: mov eax,0x1",
+        "  0004: add eax,0x2",
+        source_path .. ":3",
+        "  0008: ret",
+    }, "\n")
+
+    vim.cmd("edit " .. vim.fn.fnameescape(source_path))
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+    -- Act
+    with_mock_runtime({
+        load_asm_session = function()
+            return {
+                asm_output = asm_output,
+                full_exec_path = "/tmp/demo-bin",
+            }
+        end,
+    }, function()
+        with_captured_notify(function()
+            splitasm.setup({ auto_sync = true, clean_asm = true, source_row_colors = true })
+            splitasm.open("./demo-bin")
+        end)
+    end)
+
+    -- Assert
+    local state = splitasm_state.get()
+    local marks = extmarks_with_details(state.asm_buf, source_row_colors.get_namespace())
+    assert_eq(#marks, 3, "source-row namespace should highlight all mapped asm rows")
+    assert_eq(marks[1][4].hl_group, source_row_colors.group_for_source_line(source_path .. ":2", 2).text, "first asm line for the source row should keep that source-row text tone")
+    assert_eq(marks[2][4].hl_group, source_row_colors.group_for_source_line(source_path .. ":2", 2).text, "all asm lines for the same source row should share the same text tone")
+    assert_eq(marks[3][4].hl_group, source_row_colors.group_for_source_line(source_path .. ":3", 3).text, "next source row should use its own shifted text tone")
+    assert_truthy(marks[2][4].hl_group ~= marks[3][4].hl_group, "adjacent source rows should shift tone")
+    assert_eq(marks[1][4].number_hl_group, source_row_colors.group_for_source_line(source_path .. ":2", 2).number, "first source row should use its line-number tone")
+    assert_eq(marks[3][4].number_hl_group, source_row_colors.group_for_source_line(source_path .. ":3", 3).number, "next source row should use its shifted line-number tone")
 end
 
 local function test_open_keeps_existing_view_when_refresh_validation_fails()
@@ -453,6 +632,9 @@ function M.run()
     test_setup_validates_publishable_user_config()
     test_open_returns_early_when_runtime_has_no_output()
     test_open_renders_filtered_output_and_syncs_from_source_cursor()
+    test_open_can_disable_source_row_colors()
+    test_open_repaints_stable_source_row_colors_across_refreshes()
+    test_open_keeps_same_tone_within_source_row_and_shifts_between_source_rows()
     test_open_keeps_existing_view_when_refresh_validation_fails()
     cleanup_splitasm()
 end

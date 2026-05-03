@@ -1,4 +1,5 @@
 local M = {}
+local source_row_colors = require("splitasm.source_row_colors")
 
 local BUF_NAME = "SplitAsm"
 
@@ -43,13 +44,16 @@ function M.ensure_asm_window(state)
     return state.asm_win
 end
 
-function M.render_asm_buffer(state, asm_lines)
+function M.render_asm_buffer(state, asm_lines, opts)
+    opts = opts or {}
     local asm_win = M.ensure_asm_window(state)
     if not asm_win then
         return false
     end
 
     vim.api.nvim_win_set_buf(asm_win, M.ensure_asm_buffer(state))
+    vim.wo[asm_win].number = true
+    vim.wo[asm_win].relativenumber = false
 
     vim.bo[state.asm_buf].modifiable = true
     vim.bo[state.asm_buf].readonly = false
@@ -61,6 +65,7 @@ function M.render_asm_buffer(state, asm_lines)
     vim.bo[state.asm_buf].buftype = "nofile"
     vim.bo[state.asm_buf].buflisted = false
     vim.bo[state.asm_buf].swapfile = false
+    source_row_colors.render(state.asm_buf, state.asm_metadata, { enabled = opts.source_row_colors })
     return true
 end
 
