@@ -1,19 +1,54 @@
 local M = {}
 
-local function is_source_marker(line)
-    return line:match("^%s*(/.-):(%d+)$") ~= nil
+local function normalize_source_path(source_path)
+    if type(source_path) ~= "string" then
+        return source_path
+    end
+
+    local normalized_path = vim.trim(source_path):gsub("\\", "/")
+    local unc_prefix, unc_remainder = normalized_path:match("^(//)(.*)$")
+    if unc_prefix then
+        normalized_path = unc_prefix .. unc_remainder:gsub("/+", "/")
+    else
+        normalized_path = normalized_path:gsub("/+", "/")
+    end
+
+    local drive_letter, remainder = normalized_path:match("^([a-zA-Z]):(.*)$")
+    if drive_letter then
+        return string.upper(drive_letter) .. ":" .. remainder
+    end
+
+    return normalized_path
+end
+
+M.normalize_source_path = normalize_source_path
+
+local function build_source_id(source_path, source_line)
+    return string.format("%s:%d", source_path, source_line)
+end
+
+local function looks_like_source_path(source_path)
+    return source_path:match("^[a-zA-Z]:[\\/]")
+        or source_path:match("^/")
+        or source_path:match("^\\\\")
+        or source_path:find("/", 1, true)
+        or source_path:find("\\", 1, true)
 end
 
 local function parse_source_marker(line)
-    local source_path, source_line_num = line:match("^%s*(/.-):(%d+)$")
-    if not source_path or not source_line_num then
+    local source_path, source_line_num = line:match("^%s*(.+):(%d+)%s*$")
+    if not source_path or not source_line_num or not looks_like_source_path(source_path) then
         return nil
     end
 
     return {
-        source_path = source_path,
+        source_path = normalize_source_path(source_path),
         source_line = tonumber(source_line_num),
     }
+end
+
+local function is_source_marker(line)
+    return parse_source_marker(line) ~= nil
 end
 
 local function is_instruction_line(line)
@@ -42,9 +77,11 @@ function M.build_line_map(asm_lines)
     local file_line_maps = {}
     local asm_to_source = {}
     local asm_to_file = {}
+    local asm_metadata = {}
     local current_source_line = nil
     local current_source_file = nil
     local asm_start = nil
+    local current_lane = 0
 
     for index, line in ipairs(asm_lines) do
         local marker = parse_source_marker(line)
@@ -53,16 +90,24 @@ function M.build_line_map(asm_lines)
             current_source_file = marker.source_path
             current_source_line = marker.source_line
             asm_start = nil
+            current_lane = 0
         elseif current_source_file and current_source_line and is_instruction_line(line) then
             asm_start = asm_start or index
+            current_lane = current_lane + 1
             asm_to_source[index] = current_source_line
             asm_to_file[index] = current_source_file
+            asm_metadata[index] = {
+                source_file = current_source_file,
+                source_line = current_source_line,
+                source_id = build_source_id(current_source_file, current_source_line),
+                lane_index = current_lane,
+            }
         end
     end
 
     finalize_source_range(file_line_maps, current_source_file, current_source_line, asm_start, #asm_lines)
 
-    return file_line_maps, asm_to_source, asm_to_file
+    return file_line_maps, asm_to_source, asm_to_file, asm_metadata
 end
 
 local function normalize_instruction_line(line)
@@ -112,7 +157,7 @@ function M.normalize_asm_lines(asm_lines, clean_asm)
     return filtered_lines, old_to_new
 end
 
-function M.remap_source_mappings(raw_file_line_maps, raw_asm_to_source, raw_asm_to_file, old_to_new)
+function M.remap_source_mappings(raw_file_line_maps, raw_asm_to_source, raw_asm_to_file, raw_asm_metadata, old_to_new)
     local file_line_maps = {}
     for path, line_map in pairs(raw_file_line_maps) do
         file_line_maps[path] = {}
@@ -144,22 +189,36 @@ function M.remap_source_mappings(raw_file_line_maps, raw_asm_to_source, raw_asm_
         end
     end
 
-    return file_line_maps, asm_to_source, asm_to_file
+    local asm_metadata = {}
+    for old_line, metadata in pairs(raw_asm_metadata) do
+        local new_line = old_to_new[old_line]
+        if new_line then
+            asm_metadata[new_line] = vim.deepcopy(metadata)
+        end
+    end
+
+    return file_line_maps, asm_to_source, asm_to_file, asm_metadata
 end
 
 function M.parse(asm_lines, opts)
     opts = opts or {}
 
-    local raw_file_line_maps, raw_asm_to_source, raw_asm_to_file = M.build_line_map(asm_lines)
+    local raw_file_line_maps, raw_asm_to_source, raw_asm_to_file, raw_asm_metadata = M.build_line_map(asm_lines)
     local filtered_lines, old_to_new = M.normalize_asm_lines(asm_lines, opts.clean_asm)
-    local file_line_maps, asm_to_source, asm_to_file =
-        M.remap_source_mappings(raw_file_line_maps, raw_asm_to_source, raw_asm_to_file, old_to_new)
+    local file_line_maps, asm_to_source, asm_to_file, asm_metadata = M.remap_source_mappings(
+        raw_file_line_maps,
+        raw_asm_to_source,
+        raw_asm_to_file,
+        raw_asm_metadata,
+        old_to_new
+    )
 
     return {
         asm_lines = filtered_lines,
         file_line_maps = file_line_maps,
         asm_to_source = asm_to_source,
         asm_to_file = asm_to_file,
+        asm_metadata = asm_metadata,
         old_to_new = old_to_new,
     }
 end

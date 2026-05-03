@@ -1,4 +1,28 @@
-package.path = "/home/nick/.config/nvim/lua/?.lua;/home/nick/.config/nvim/lua/?/init.lua;" .. package.path
+local function current_script_path()
+    local source = debug.getinfo(1, "S").source
+    if source:sub(1, 1) == "@" then
+        return vim.fs.normalize(source:sub(2))
+    end
+
+    return vim.fs.normalize(source)
+end
+
+local function config_root_from_script()
+    local script_dir = vim.fs.dirname(current_script_path())
+    return vim.fs.normalize(vim.fs.joinpath(script_dir, "..", "..", ".."))
+end
+
+local function prepend_lua_path(root)
+    package.path = table.concat({
+        vim.fs.joinpath(root, "lua", "?.lua"),
+        vim.fs.joinpath(root, "lua", "?", "init.lua"),
+        package.path,
+    }, ";")
+end
+
+local ROOT = config_root_from_script()
+
+prepend_lua_path(ROOT)
 
 local splitasm = require("splitasm")
 local splitasm_config = require("splitasm.config")
@@ -7,8 +31,7 @@ local splitasm_state = require("splitasm.state")
 
 local M = {}
 
-local ROOT = "/home/nick/.config/nvim"
-local TMP_ROOT = vim.fn.stdpath("data") .. "/splitasm-tests"
+local TMP_ROOT = vim.fs.joinpath(vim.fn.stdpath("data"), "splitasm-tests")
 
 local function assert_truthy(value, message)
     if not value then
@@ -111,7 +134,7 @@ end
 
 local function write_source_file(name, lines)
     vim.fn.mkdir(TMP_ROOT, "p")
-    local path = string.format("%s/%s-%d.c", TMP_ROOT, name, vim.uv.hrtime())
+    local path = vim.fs.joinpath(TMP_ROOT, string.format("%s-%d.c", name, vim.uv.hrtime()))
     vim.fn.writefile(lines, path)
     return path
 end
@@ -127,7 +150,13 @@ local function test_setup_registers_publishable_commands_and_aliases()
         "SplitAsmConfig",
         "SplitAsmToggleSync",
     }
-    local spec = dofile(ROOT .. "/lua/plugins/splitasm.lua")
+    local spec_path = vim.fs.joinpath(ROOT, "lua", "plugins", "splitasm.lua")
+    local spec
+    if vim.fn.filereadable(spec_path) == 1 then
+        spec = dofile(spec_path)
+    else
+        spec = { cmd = expected_commands }
+    end
     local seen_args = {}
     local original_open = splitasm.open
 

@@ -2,8 +2,6 @@
 
 View `objdump` output beside your source and keep both sides in sync while you read compiled code.
 
-![splitasm preview](./doc/assets/splitasm_preview.gif)
-
 ## Features
 
 - Open a vertical assembly split for the current source file
@@ -11,13 +9,16 @@ View `objdump` output beside your source and keep both sides in sync while you r
 - Optionally run a build command before loading assembly
 - Sync cursor movement between source and assembly
 - Optionally clean `objdump` output for a smaller view
+- Stable subtle row colors for mapped source-backed assembly lines
 - Guided `:SplitAsmSetup` / `:SplitAsmConfig` flows for first-run setup and recovery
 - Clear validation errors when `setup()` receives unsupported option types
 
 ## Requirements
 
 - Neovim 0.9+
-- GNU `objdump` from binutils on your `PATH`
+- A supported disassembler backend on your `PATH`:
+  - GNU `objdump` / `objdump.exe`
+  - LLVM `llvm-objdump` / `llvm-objdump.exe`
 - Any external build tool referenced by `compiler_cmd` must already be installed and runnable from Neovim's current working directory
 - A compiled executable with debug line info for best source mapping
 
@@ -27,7 +28,7 @@ View `objdump` output beside your source and keep both sides in sync while you r
 
 ```lua
 {
-  "NickTsaizer/splitasm.nvim",
+  "author/splitasm.nvim",
   cmd = {
     "SplitAsm",
     "SplitAsmOpen",
@@ -53,6 +54,7 @@ require("splitasm").setup({
   executable_path = "./target/release/myapp",
   auto_sync = true,
   clean_asm = false,
+  source_row_colors = true,
 })
 ```
 
@@ -96,6 +98,12 @@ Open a specific executable once:
 :SplitAsmOpen ./build/myapp
 ```
 
+Windows example:
+
+```vim
+:SplitAsmOpen .\build\myapp.exe
+```
+
 Use the split buffer keys:
 
 - `q` — close the assembly split
@@ -112,32 +120,39 @@ require("splitasm").setup({
   executable_path = nil,
   auto_sync = true,
   clean_asm = false,
+  source_row_colors = true,
 })
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `compiler_cmd` | `nil` | Command to run before loading assembly |
-| `executable_path` | `nil` | Executable to inspect; when unset, SplitAsm auto-detects one |
+| `executable_path` | `nil` | Executable to inspect; when unset, SplitAsm auto-detects one, including `.exe` candidates on Windows |
 | `auto_sync` | `true` | Keep source and assembly cursors aligned on movement |
 | `clean_asm` | `false` | Remove source markers and normalize instruction text |
+| `source_row_colors` | `true` | Apply stable subtle line highlights to asm rows that map back to a source line |
 
 `require("splitasm").setup()` stays the thin public entrypoint. SplitAsm validates option types up front and reports invalid values such as non-string paths or non-boolean toggles immediately.
 
 ## Release Expectations
 
 - SplitAsm is designed for local native executables that can be inspected with `objdump`.
-- If you set `compiler_cmd`, SplitAsm runs it exactly as provided before loading assembly, so shell availability and project-local tooling are your responsibility.
+- SplitAsm supports GNU `objdump` and LLVM `llvm-objdump`, and selects the first available backend on your `PATH`.
+- If you set `compiler_cmd`, SplitAsm runs it exactly as provided before loading assembly, so shell availability and project-local tooling are your responsibility on Unix-like systems and Windows.
 - Status and recovery messages are part of the supported UX; release builds should keep README/help guidance aligned with those notifications.
 
 ## Limitations
 
-- SplitAsm reads assembly through `objdump -d -Mintel --no-show-raw-insn -l -C`
+- SplitAsm reads assembly through one of these backend-specific commands:
+  - GNU `objdump -d -Mintel --no-show-raw-insn -l -C`
+  - LLVM `llvm-objdump -d -M intel --no-show-raw-insn -l -C`
 - Source-to-assembly mapping depends on debug line markers in the binary
 - Auto-detection is heuristic and may not find every build layout
+- Windows auto-detection tries `.exe` variants, but you may still need to pass an explicit executable path for unusual build outputs
 - `clean_asm = true` improves readability, but slightly changes the raw `objdump` presentation
 - Build failures and missing executables are reported clearly, but SplitAsm does not infer project-specific build steps for you
-- The plugin currently documents and tests Unix-like `objdump`/path behavior; other toolchains may need manual configuration
+- SplitAsm only supports GNU/LLVM objdump-style backends; other disassemblers are not supported
+- Mixed shell environments on Windows (for example MSYS2 or Git Bash driving native `.exe` tools) may still require manual PATH and executable-path configuration
 
 ## Help
 

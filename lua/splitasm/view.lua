@@ -1,4 +1,5 @@
 local M = {}
+local parser = require("splitasm.parser")
 local source_row_colors = require("splitasm.source_row_colors")
 
 local BUF_NAME = "SplitAsm"
@@ -7,6 +8,11 @@ local function center_window(win)
     vim.api.nvim_win_call(win, function()
         vim.cmd("normal! zz")
     end)
+end
+
+local function get_file_map(file_line_maps, source_path)
+    local normalized_path = parser.normalize_source_path(source_path)
+    return file_line_maps[normalized_path], normalized_path
 end
 
 function M.get_source_context(state)
@@ -70,10 +76,12 @@ function M.render_asm_buffer(state, asm_lines, opts)
 end
 
 function M.jump_to_initial_position(state, current_line)
-    local file_map = state.file_line_maps[state.current_file]
+    local file_map, normalized_path = get_file_map(state.file_line_maps, state.current_file)
     if not file_map then
         return
     end
+
+    state.current_file = normalized_path
 
     local range = file_map[current_line]
     if not range or not state.asm_win or not vim.api.nvim_win_is_valid(state.asm_win) then
@@ -108,15 +116,18 @@ function M.focus_source_location(state, target_path, source_line)
     end
 
     local current_buf = vim.api.nvim_win_get_buf(source_win)
-    local current_path = vim.fn.expand(vim.api.nvim_buf_get_name(current_buf))
-    if current_path ~= target_path then
+    local current_path = parser.normalize_source_path(vim.fn.expand(vim.api.nvim_buf_get_name(current_buf)))
+    local normalized_target_path = parser.normalize_source_path(target_path)
+    if current_path ~= normalized_target_path then
         vim.api.nvim_win_call(source_win, function()
-            vim.cmd("edit " .. vim.fn.fnameescape(target_path))
+            vim.cmd("edit " .. vim.fn.fnameescape(normalized_target_path))
         end)
         state.source_buf = vim.api.nvim_win_get_buf(source_win)
     else
         state.source_buf = current_buf
     end
+
+    state.current_file = normalized_target_path
 
     local line_count = vim.api.nvim_buf_line_count(state.source_buf)
     vim.api.nvim_win_set_cursor(source_win, { math.min(source_line, line_count), 0 })

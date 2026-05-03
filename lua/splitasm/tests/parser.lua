@@ -1,4 +1,26 @@
-package.path = "/home/nick/.config/nvim/lua/?.lua;/home/nick/.config/nvim/lua/?/init.lua;" .. package.path
+local function current_script_path()
+    local source = debug.getinfo(1, "S").source
+    if source:sub(1, 1) == "@" then
+        return vim.fs.normalize(source:sub(2))
+    end
+
+    return vim.fs.normalize(source)
+end
+
+local function config_root_from_script()
+    local script_dir = vim.fs.dirname(current_script_path())
+    return vim.fs.normalize(vim.fs.joinpath(script_dir, "..", "..", ".."))
+end
+
+local function prepend_lua_path(root)
+    package.path = table.concat({
+        vim.fs.joinpath(root, "lua", "?.lua"),
+        vim.fs.joinpath(root, "lua", "?", "init.lua"),
+        package.path,
+    }, ";")
+end
+
+prepend_lua_path(config_root_from_script())
 
 local parser = require("splitasm.parser")
 
@@ -29,6 +51,14 @@ local function assert_range(actual, start_line, end_line, message)
     assert_eq(actual.end_line, end_line, (message or "range end mismatch") .. " end")
 end
 
+local function assert_source_metadata(actual, expected_file, expected_line, expected_id, expected_lane, message)
+    assert_truthy(type(actual) == "table", (message or "metadata missing") .. " (table expected)")
+    assert_eq(actual.source_file, expected_file, (message or "source file mismatch") .. " file")
+    assert_eq(actual.source_line, expected_line, (message or "source line mismatch") .. " line")
+    assert_eq(actual.source_id, expected_id, (message or "source id mismatch") .. " id")
+    assert_eq(actual.lane_index, expected_lane, (message or "lane mismatch") .. " lane")
+end
+
 local function test_build_line_map_tracks_multiple_source_ranges()
     -- Arrange
     local asm_lines = {
@@ -42,7 +72,7 @@ local function test_build_line_map_tracks_multiple_source_ranges()
     }
 
     -- Act
-    local file_line_maps, asm_to_source, asm_to_file = parser.build_line_map(asm_lines)
+    local file_line_maps, asm_to_source, asm_to_file, asm_metadata = parser.build_line_map(asm_lines)
 
     -- Assert
     assert_range(file_line_maps["/tmp/example.c"][10], 2, 3, "example.c:10")
@@ -51,6 +81,9 @@ local function test_build_line_map_tracks_multiple_source_ranges()
     assert_eq(asm_to_source[2], 10, "line 2 source line")
     assert_eq(asm_to_source[5], 11, "line 5 source line")
     assert_eq(asm_to_file[7], "/tmp/other.c", "line 7 source file")
+    assert_source_metadata(asm_metadata[2], "/tmp/example.c", 10, "/tmp/example.c:10", 1, "line 2 metadata")
+    assert_source_metadata(asm_metadata[3], "/tmp/example.c", 10, "/tmp/example.c:10", 2, "line 3 metadata")
+    assert_source_metadata(asm_metadata[7], "/tmp/other.c", 7, "/tmp/other.c:7", 1, "line 7 metadata")
 end
 
 local function test_parse_remaps_filtered_output_for_public_open_flow()
@@ -78,6 +111,9 @@ local function test_parse_remaps_filtered_output_for_public_open_flow()
     assert_eq(parsed.asm_to_source[2], 10, "remapped source line 2")
     assert_eq(parsed.asm_to_source[4], 11, "remapped source line 4")
     assert_eq(parsed.asm_to_file[3], "/tmp/example.c", "remapped file line 3")
+    assert_source_metadata(parsed.asm_metadata[2], "/tmp/example.c", 10, "/tmp/example.c:10", 1, "remapped metadata line 2")
+    assert_source_metadata(parsed.asm_metadata[3], "/tmp/example.c", 10, "/tmp/example.c:10", 2, "remapped metadata line 3")
+    assert_source_metadata(parsed.asm_metadata[4], "/tmp/example.c", 11, "/tmp/example.c:11", 1, "remapped metadata line 4")
 end
 
 local function test_parse_without_cleaning_preserves_non_source_lines()
@@ -115,6 +151,52 @@ local function test_parse_with_cleaning_drops_empty_source_ranges()
     assert_eq(#parsed.asm_lines, 2, "clean asm output should keep label and instruction")
     assert_nil(parsed.file_line_maps["/tmp/example.c"][10], "line 10 should not map without instructions")
     assert_range(parsed.file_line_maps["/tmp/example.c"][11], 2, 2, "line 11 remap should survive cleaning")
+    assert_nil(parsed.asm_metadata[1], "label line should stay unmapped after cleaning")
+    assert_source_metadata(parsed.asm_metadata[2], "/tmp/example.c", 11, "/tmp/example.c:11", 1, "line 11 metadata should survive cleaning")
+end
+
+local function test_build_line_map_normalizes_windows_source_markers()
+    -- Arrange
+    local asm_lines = {
+        [[C:\work\demo\main.c:12]],
+        "  0000: mov eax,ebx",
+        [[c:/work/demo\\util.c:7]],
+        "  0004: ret",
+    }
+
+    -- Act
+    local file_line_maps, asm_to_source, asm_to_file, asm_metadata = parser.build_line_map(asm_lines)
+
+    -- Assert
+    assert_range(file_line_maps["C:/work/demo/main.c"][12], 2, 2, "normalized main.c range")
+    assert_range(file_line_maps["C:/work/demo/util.c"][7], 4, 4, "normalized util.c range")
+    assert_eq(asm_to_source[2], 12, "windows marker source line should map")
+    assert_eq(asm_to_file[2], "C:/work/demo/main.c", "drive-letter path should normalize for asm mapping")
+    assert_eq(asm_to_file[4], "C:/work/demo/util.c", "backslash path should normalize for asm mapping")
+    assert_source_metadata(asm_metadata[2], "C:/work/demo/main.c", 12, "C:/work/demo/main.c:12", 1, "normalized metadata")
+    assert_source_metadata(asm_metadata[4], "C:/work/demo/util.c", 7, "C:/work/demo/util.c:7", 1, "mixed separator metadata")
+end
+
+local function test_parse_normalizes_windows_paths_in_public_results()
+    -- Arrange
+    local asm_lines = {
+        [[c:\work\demo\main.c:3]],
+        "0000000000000000 <main()>:",
+        "  0000: MOV PTR [rbp-4],eax",
+        [[C:/work/demo\\main.c:4]],
+        "  0004: ret",
+    }
+
+    -- Act
+    local parsed = parser.parse(asm_lines, { clean_asm = true })
+
+    -- Assert
+    assert_range(parsed.file_line_maps["C:/work/demo/main.c"][3], 2, 2, "line 3 should map with normalized windows key")
+    assert_range(parsed.file_line_maps["C:/work/demo/main.c"][4], 3, 3, "line 4 should preserve normalized marker key")
+    assert_eq(parsed.asm_to_file[2], "C:/work/demo/main.c", "clean parse should normalize first windows path")
+    assert_eq(parsed.asm_to_file[3], "C:/work/demo/main.c", "clean parse should normalize mixed windows path")
+    assert_source_metadata(parsed.asm_metadata[2], "C:/work/demo/main.c", 3, "C:/work/demo/main.c:3", 1, "line 3 windows metadata")
+    assert_source_metadata(parsed.asm_metadata[3], "C:/work/demo/main.c", 4, "C:/work/demo/main.c:4", 1, "line 4 windows metadata")
 end
 
 function M.run()
@@ -122,6 +204,8 @@ function M.run()
     test_parse_remaps_filtered_output_for_public_open_flow()
     test_parse_without_cleaning_preserves_non_source_lines()
     test_parse_with_cleaning_drops_empty_source_ranges()
+    test_build_line_map_normalizes_windows_source_markers()
+    test_parse_normalizes_windows_paths_in_public_results()
 end
 
 local function run_as_script()

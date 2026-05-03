@@ -5,6 +5,7 @@ local defaults = {
     executable_path = nil,
     auto_sync = true,
     clean_asm = false,
+    source_row_colors = true,
 }
 
 local state = {
@@ -54,6 +55,7 @@ local function normalize_config(user_config)
         executable_path = normalize_string(user_config.executable_path, "executable_path"),
         auto_sync = normalize_boolean(user_config.auto_sync, "auto_sync"),
         clean_asm = normalize_boolean(user_config.clean_asm, "clean_asm"),
+        source_row_colors = normalize_boolean(user_config.source_row_colors, "source_row_colors"),
     }
 end
 
@@ -72,6 +74,7 @@ function M.describe(config)
         string.format("Executable path: %s", active_config.executable_path or "auto-detect from cwd"),
         string.format("Auto-sync: %s", active_config.auto_sync and "enabled" or "disabled"),
         string.format("Clean assembly: %s", active_config.clean_asm and "enabled" or "disabled"),
+        string.format("Source row colors: %s", active_config.source_row_colors and "enabled" or "disabled"),
     }
 end
 

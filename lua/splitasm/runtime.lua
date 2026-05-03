@@ -4,7 +4,29 @@ local M = {}
 
 local EXECUTABLE_SEARCH_DIRS = { ".", "build", "bin", "out", "dist" }
 local FALLBACK_EXECUTABLE_NAMES = { "a.out", "main" }
-local OBJDUMP_CMD = "objdump"
+
+local function gnu_objdump_args()
+    return { "-d", "-Mintel", "--no-show-raw-insn", "-l", "-C" }
+end
+
+local function llvm_objdump_args()
+    return { "-d", "-M", "intel", "--no-show-raw-insn", "-l", "-C" }
+end
+
+local OBJDUMP_BACKENDS = {
+    {
+        id = "gnu-objdump",
+        label = "GNU objdump",
+        commands = { "objdump", "objdump.exe" },
+        build_args = gnu_objdump_args,
+    },
+    {
+        id = "llvm-objdump",
+        label = "LLVM objdump",
+        commands = { "llvm-objdump", "llvm-objdump.exe" },
+        build_args = llvm_objdump_args,
+    },
+}
 
 local function notify(message, level)
     vim.notify(message, level, { title = "splitasm" })
@@ -24,6 +46,24 @@ end
 
 local function normalize_candidate(value)
     return splitasm_config.normalize_path(value)
+end
+
+local function normalize_resolved_path(value)
+    local normalized = normalize_candidate(value)
+    if not normalized then
+        return nil
+    end
+
+    return vim.fs.normalize(normalized)
+end
+
+local function is_windows()
+    return vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1
+end
+
+local function has_file_extension(path)
+    local tail = vim.fn.fnamemodify(path, ":t")
+    return tail:match("%.[^/\\]+$") ~= nil
 end
 
 local function executable_help_lines()
@@ -56,6 +96,38 @@ local function format_command_error(prefix, output)
     return prefix .. "\n\nDetails:\n" .. details
 end
 
+local function build_backend_args(backend)
+    if backend.build_args then
+        return backend.build_args()
+    end
+
+    return vim.deepcopy(backend.args or {})
+end
+
+local function format_backend_commands(backend)
+    local command_names = backend.command_names or backend.commands or {}
+    return string.format("%s [%s]", backend.label, table.concat(command_names, ", "))
+end
+
+local function build_missing_backend_message(statuses)
+    local backend_lines = vim.tbl_map(function(status)
+        return string.format("- %s", format_backend_commands(status))
+    end, statuses or OBJDUMP_BACKENDS)
+    local lines = {
+        "SplitAsm could not find a supported disassembler backend.",
+        "Supported backends checked:",
+    }
+
+    vim.list_extend(lines, backend_lines)
+    lines[#lines + 1] = "Install GNU binutils or LLVM and make objdump/llvm-objdump available on PATH, then run :SplitAsmOpen again."
+
+    if is_windows() then
+        lines[#lines + 1] = "Windows note: GNU objdump uses objdump.exe, while LLVM support requires llvm-objdump.exe."
+    end
+
+    return table.concat(lines, "\n")
+end
+
 local function add_candidate(candidates, seen, candidate)
     local normalized = normalize_candidate(candidate)
     if not normalized or seen[normalized] then
@@ -64,6 +136,84 @@ local function add_candidate(candidates, seen, candidate)
 
     seen[normalized] = true
     candidates[#candidates + 1] = normalized
+end
+
+local function add_candidate_variants(candidates, seen, candidate, opts)
+    opts = opts or {}
+
+    if is_windows() and opts.prefer_windows_suffix and not has_file_extension(candidate) then
+        add_candidate(candidates, seen, candidate .. ".exe")
+    end
+
+    add_candidate(candidates, seen, candidate)
+
+    if is_windows() and not opts.prefer_windows_suffix and not has_file_extension(candidate) then
+        add_candidate(candidates, seen, candidate .. ".exe")
+    end
+end
+
+local function path_exists(path)
+    local full_path = vim.fn.expand(path)
+    return vim.fn.filereadable(full_path) == 1 or vim.fn.executable(full_path) == 1
+end
+
+local function resolve_existing_path_variant(path)
+    local candidates = {}
+    local seen = {}
+
+    add_candidate_variants(candidates, seen, path, { prefer_windows_suffix = false })
+
+    for _, candidate in ipairs(candidates) do
+        if path_exists(candidate) then
+            return candidate
+        end
+    end
+end
+
+local function resolve_command_candidate(candidate)
+    local resolved = normalize_resolved_path(vim.fn.exepath(candidate))
+    if resolved then
+        return resolved
+    end
+
+    if path_exists(candidate) then
+        return normalize_resolved_path(vim.fn.expand(candidate))
+    end
+end
+
+local function build_backend_status(backend, resolved_command)
+    return {
+        id = backend.id,
+        label = backend.label,
+        command_names = vim.deepcopy(backend.commands),
+        args = build_backend_args(backend),
+        available = resolved_command ~= nil,
+        command = resolved_command,
+    }
+end
+
+local function discover_objdump_backends()
+    local statuses = {}
+    local selected_backend = nil
+
+    for _, backend in ipairs(OBJDUMP_BACKENDS) do
+        local resolved_command = nil
+
+        for _, command_name in ipairs(backend.commands) do
+            resolved_command = resolve_command_candidate(command_name)
+            if resolved_command then
+                break
+            end
+        end
+
+        local status = build_backend_status(backend, resolved_command)
+        statuses[#statuses + 1] = status
+        if not selected_backend and status.available then
+            selected_backend = status
+        end
+    end
+
+    return selected_backend, statuses
 end
 
 local function get_source_stem(source_path)
@@ -90,7 +240,7 @@ local function build_detected_candidates(source_path, cwd)
         if name then
             for _, dir in ipairs(EXECUTABLE_SEARCH_DIRS) do
                 local prefix = dir == "." and "./" or ("./" .. dir .. "/")
-                add_candidate(candidates, seen, prefix .. name)
+                add_candidate_variants(candidates, seen, prefix .. name, { prefer_windows_suffix = true })
             end
         end
     end
@@ -100,8 +250,7 @@ end
 
 local function first_executable_candidate(candidates)
     for _, candidate in ipairs(candidates) do
-        local full_path = vim.fn.expand(candidate)
-        if vim.fn.executable(full_path) == 1 then
+        if path_exists(candidate) then
             return candidate
         end
     end
@@ -110,7 +259,7 @@ end
 function M.resolve_executable_path(config, exec_path_override, source_path)
     local configured_path = normalize_candidate(exec_path_override) or normalize_candidate(config.executable_path)
     if configured_path then
-        return configured_path
+        return resolve_existing_path_variant(configured_path) or configured_path
     end
 
     return first_executable_candidate(build_detected_candidates(source_path, vim.uv.cwd()))
@@ -127,6 +276,7 @@ function M.inspect(opts)
     local full_exec_path = resolved_exec_path and vim.fn.expand(resolved_exec_path) or nil
     local executable_exists = full_exec_path ~= nil
         and (vim.fn.filereadable(full_exec_path) == 1 or vim.fn.executable(full_exec_path) == 1)
+    local objdump_backend, objdump_candidates = discover_objdump_backends()
 
     return {
         config = config,
@@ -138,7 +288,9 @@ function M.inspect(opts)
         resolved_exec_path = resolved_exec_path,
         full_exec_path = full_exec_path,
         executable_exists = executable_exists,
-        objdump_available = vim.fn.executable(OBJDUMP_CMD) == 1,
+        objdump_available = objdump_backend ~= nil,
+        objdump_backend = objdump_backend,
+        objdump_candidates = objdump_candidates,
     }
 end
 
@@ -147,8 +299,20 @@ function M.status_lines(status)
         string.format("Working directory: %s", status.cwd),
         string.format("Source file: %s", status.source_path or "current buffer is not a file yet"),
         string.format("Build command: %s", status.config.compiler_cmd or "not set"),
-        string.format("objdump: %s", status.objdump_available and "available" or "missing from PATH"),
+        string.format(
+            "objdump: %s",
+            status.objdump_available and "available" or "missing from PATH (no supported backend found)"
+        ),
     }
+
+    if status.objdump_backend then
+        lines[#lines + 1] = string.format("objdump backend: %s (%s)", status.objdump_backend.label, status.objdump_backend.command)
+    elseif status.objdump_candidates and #status.objdump_candidates > 0 then
+        local backend_labels = vim.tbl_map(function(candidate)
+            return format_backend_commands(candidate)
+        end, status.objdump_candidates)
+        lines[#lines + 1] = "objdump backends checked: " .. table.concat(backend_labels, ", ")
+    end
 
     if status.resolved_exec_path and status.executable_exists then
         lines[#lines + 1] = string.format(
@@ -212,11 +376,9 @@ function M.ensure_executable_exists(exec_path)
 end
 
 function M.prepare_executable(config, exec_path_override, source_path)
-    if vim.fn.executable(OBJDUMP_CMD) ~= 1 then
-        notify_once(
-            "SplitAsm requires `objdump` to read assembly output. Install GNU binutils (or an equivalent package that provides objdump), then run :SplitAsmOpen again.",
-            vim.log.levels.ERROR
-        )
+    local backend, statuses = discover_objdump_backends()
+    if not backend then
+        notify_once(build_missing_backend_message(statuses), vim.log.levels.ERROR)
         return nil
     end
 
@@ -246,18 +408,15 @@ function M.prepare_executable(config, exec_path_override, source_path)
 end
 
 function M.get_objdump_output(full_exec_path)
-    if vim.fn.executable(OBJDUMP_CMD) ~= 1 then
-        notify_once(
-            "SplitAsm requires `objdump` to read assembly output. Install GNU binutils (or an equivalent package that provides objdump), then run :SplitAsmOpen again.",
-            vim.log.levels.ERROR
-        )
+    local backend, statuses = discover_objdump_backends()
+    if not backend then
+        notify_once(build_missing_backend_message(statuses), vim.log.levels.ERROR)
         return nil
     end
 
-    local objdump_cmd = string.format(
-        "objdump -d -Mintel --no-show-raw-insn -l -C %s 2>&1",
-        vim.fn.shellescape(full_exec_path)
-    )
+    local objdump_cmd = vim.list_extend({ backend.command }, vim.deepcopy(backend.args))
+    objdump_cmd[#objdump_cmd + 1] = full_exec_path
+
     local dump_result = run_system_command(objdump_cmd)
     if dump_result.ok then
         return dump_result.output
@@ -265,7 +424,10 @@ function M.get_objdump_output(full_exec_path)
 
     notify(
         format_command_error(
-            "SplitAsm failed to read assembly with objdump. Confirm the executable exists, is readable, and was built for your current toolchain.",
+            string.format(
+                "SplitAsm failed to read assembly with %s. Confirm the executable exists, is readable, and was built for your current toolchain.",
+                backend.label
+            ),
             dump_result.output
         ),
         vim.log.levels.ERROR

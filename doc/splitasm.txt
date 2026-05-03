@@ -23,6 +23,7 @@ Features:
   - run an optional build command before loading assembly
   - toggle cursor sync between source and assembly
   - optionally clean objdump output for a smaller view
+  - stable subtle source-row coloring for mapped assembly lines
   - guided setup/config commands for first-run setup and recovery
   - validation errors for unsupported `setup()` option types
 
@@ -30,7 +31,9 @@ Features:
 2. REQUIREMENTS\t\t\t\t\t*splitasm-requirements*
 
   - Neovim 0.9+
-  - GNU `objdump` on your PATH
+  - a supported disassembler backend on your PATH:
+      GNU `objdump` / `objdump.exe`
+      LLVM `llvm-objdump` / `llvm-objdump.exe`
   - any external build tool referenced by `compiler_cmd`
   - a compiled executable with debug line info for best source mapping
 
@@ -61,6 +64,7 @@ Configured setup: >lua
     executable_path = "./target/release/myapp",
     auto_sync = true,
     clean_asm = false,
+    source_row_colors = true,
   })
 <
 
@@ -100,6 +104,7 @@ Defaults: >lua
     executable_path = nil,
     auto_sync = true,
     clean_asm = false,
+    source_row_colors = true,
   })
 <
 
@@ -118,6 +123,9 @@ Options:
   clean_asm       (boolean)
     Remove source-marker lines and normalize instruction text for readability.
 
+  source_row_colors (boolean)
+    Apply stable source-row coloring to the asm text and line-number column.
+
 SplitAsm validates setup values up front. For example, `auto_sync` must be a
 boolean and `compiler_cmd` / `executable_path` must be strings when provided.
 
@@ -127,6 +135,8 @@ Auto-detection checks these locations:
   - ./bin
   - ./out
   - ./dist
+
+Windows auto-detection also tries `.exe` variants for the discovered names.
 
 ===============================================================================
 6. USAGE\t\t\t\t\t\t*splitasm-usage*
@@ -145,6 +155,10 @@ Open a specific executable once: >vim
   :SplitAsmOpen ./build/myapp
 <
 
+Windows example: >vim
+  :SplitAsmOpen .\build\myapp.exe
+<
+
 Assembly split keys:
   q   close the assembly split
   r   refresh the assembly view
@@ -160,15 +174,20 @@ and points you back to `:SplitAsmSetup`, `:SplitAsmConfig`, or a one-off
 ===============================================================================
 7. LIMITATIONS\t\t\t\t\t*splitasm-limitations*
 
-  - SplitAsm reads assembly with:
-      objdump -d -Mintel --no-show-raw-insn -l -C
+  - SplitAsm reads assembly with one of these backend-specific commands:
+      GNU `objdump -d -Mintel --no-show-raw-insn -l -C`
+      LLVM `llvm-objdump -d -M intel --no-show-raw-insn -l -C`
   - Source mapping depends on debug line markers in the binary.
   - Auto-detection is heuristic and may not match every project layout.
+  - Windows auto-detection tries `.exe` variants, but explicit executable
+    paths may still be needed for unusual build outputs.
   - `clean_asm = true` improves readability, but does not preserve raw objdump
     formatting exactly.
   - `compiler_cmd` is executed as provided; SplitAsm does not manage external
     build tools or infer project-specific build steps.
-  - Current docs and smoke tests cover Unix-like objdump/path behavior.
+  - SplitAsm only supports GNU/LLVM objdump-style backends.
+  - Mixed shell environments on Windows may still require manual PATH or
+    executable-path configuration.
 
 ===============================================================================
 vim:tw=78:ts=8:noet:ft=help

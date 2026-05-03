@@ -1,6 +1,12 @@
 local state_store = require("splitasm.state")
+local parser = require("splitasm.parser")
 
 local M = {}
+
+local function get_file_map(file_line_maps, source_path)
+    local normalized_path = parser.normalize_source_path(source_path)
+    return file_line_maps[normalized_path], normalized_path
+end
 
 local function center_window(win)
     vim.api.nvim_win_call(win, function()
@@ -28,13 +34,14 @@ function M.sync_source_to_asm(state, get_config)
 
     local buf = vim.api.nvim_win_get_buf(current_win)
     local current_file = vim.api.nvim_buf_get_name(buf)
-    local file_map = state.file_line_maps[current_file]
+    local file_map, normalized_file = get_file_map(state.file_line_maps, current_file)
     if not file_map then
         return
     end
 
     state.source_win = current_win
     state.source_buf = buf
+    state.current_file = normalized_file
 
     local source_line = vim.api.nvim_win_get_cursor(state.source_win)[1]
     local range = file_map[source_line]
@@ -66,7 +73,11 @@ function M.sync_asm_to_source(state, opts)
         return
     end
 
-    local target_path = state.asm_to_file[asm_line] or state.current_file
+    local target_path = parser.normalize_source_path(state.asm_to_file[asm_line] or state.current_file)
+    if not target_path then
+        return
+    end
+
     if vim.fn.filereadable(target_path) ~= 1 then
         vim.notify("Source file not found: " .. target_path, vim.log.levels.WARN)
         return
