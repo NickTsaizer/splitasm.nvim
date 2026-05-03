@@ -1,0 +1,176 @@
+*splitasm.txt*\t\t\tSplitAsm for Neovim
+
+===============================================================================
+CONTENTS\t\t\t\t\t\t\t*splitasm*
+
+1. Introduction..................|splitasm-introduction|
+2. Requirements..................|splitasm-requirements|
+3. Installation..................|splitasm-installation|
+4. Commands......................|splitasm-commands|
+5. Configuration.................|splitasm-configuration|
+6. Usage.........................|splitasm-usage|
+7. Limitations...................|splitasm-limitations|
+
+===============================================================================
+1. INTRODUCTION\t\t\t\t\t*splitasm-introduction*
+
+SplitAsm opens an assembly split beside your source buffer and keeps both views
+aligned while you inspect compiled output.
+
+Features:
+  - open a vertical assembly split from the current source file
+  - auto-detect a nearby executable or accept an explicit path
+  - run an optional build command before loading assembly
+  - toggle cursor sync between source and assembly
+  - optionally clean objdump output for a smaller view
+  - guided setup/config commands for first-run setup and recovery
+  - runtime status output from notifications and the assembly split `?` mapping
+  - validation errors for unsupported `setup()` option types
+
+===============================================================================
+2. REQUIREMENTS\t\t\t\t\t*splitasm-requirements*
+
+  - Neovim 0.9+
+  - GNU `objdump` on your PATH
+  - any external build tool referenced by `compiler_cmd`
+  - a compiled executable with debug line info for best source mapping
+
+===============================================================================
+3. INSTALLATION\t\t\t\t\t*splitasm-installation*
+
+Example with lazy.nvim: >lua
+  {
+    "NickTsaizer/splitasm.nvim",
+    cmd = {
+      "SplitAsm",
+      "SplitAsmOpen",
+      "SplitAsmSetup",
+      "SplitAsmConfig",
+      "SplitAsmToggleSync",
+    },
+    opts = {},
+  }
+<
+
+Minimal setup: >lua
+  require("splitasm").setup()
+<
+
+Configured setup: >lua
+  require("splitasm").setup({
+    compiler_cmd = "cargo build --release",
+    executable_path = "./target/release/myapp",
+    auto_sync = true,
+    clean_asm = false,
+  })
+<
+
+===============================================================================
+4. COMMANDS\t\t\t\t\t*splitasm-commands*
+
+                                        *:SplitAsmOpen*
+:SplitAsmOpen [path]
+    Open the assembly view for the configured executable or an explicit path.
+
+                                        *:SplitAsm*
+:SplitAsm [path]
+    Alias for |:SplitAsmOpen|.
+
+                                        *:SplitAsmSetup*
+:SplitAsmSetup
+    Run guided setup for build command and executable path.
+
+                                        *:SplitAsmConfig*
+:SplitAsmConfig
+    Show runtime status, show the current settings, then prompt for updates.
+
+                                        *:SplitAsmToggleSync*
+:SplitAsmToggleSync
+    Toggle automatic synchronization between source and assembly.
+
+===============================================================================
+5. CONFIGURATION\t\t\t\t\t*splitasm-configuration*
+
+SplitAsm exposes a thin public entrypoint: >lua
+  require("splitasm").setup({ ... })
+<
+
+Defaults: >lua
+  require("splitasm").setup({
+    compiler_cmd = nil,
+    executable_path = nil,
+    auto_sync = true,
+    clean_asm = false,
+  })
+<
+
+Options:
+
+  compiler_cmd    (string|nil)
+    Command to run before loading assembly.
+
+  executable_path (string|nil)
+    Executable to inspect. When unset, SplitAsm auto-detects one from the
+    current working directory.
+
+  auto_sync       (boolean)
+    Keep source and assembly cursors aligned while moving.
+
+  clean_asm       (boolean)
+    Remove source-marker lines and normalize instruction text for readability.
+
+SplitAsm validates setup values up front. For example, `auto_sync` must be a
+boolean and `compiler_cmd` / `executable_path` must be strings when provided.
+
+Auto-detection checks these locations:
+  - .
+  - ./build
+  - ./bin
+  - ./out
+  - ./dist
+
+===============================================================================
+6. USAGE\t\t\t\t\t\t*splitasm-usage*
+
+Typical flow:
+
+  1. Open a source file.
+  2. Run `:SplitAsmOpen`.
+  3. Move the cursor in either split.
+
+Open the detected executable: >vim
+  :SplitAsmOpen
+<
+
+Open a specific executable once: >vim
+  :SplitAsmOpen ./build/myapp
+<
+
+Assembly split keys:
+  q   close the assembly split
+  r   refresh the assembly view
+  ?   show runtime status, resolved executable details, and dependency hints
+  s   toggle sync
+
+The same `s` mapping is also added to source buffers while a SplitAsm session is
+active.
+
+If executable resolution fails, SplitAsm reports the auto-detect search paths
+and points you back to `:SplitAsmSetup`, `:SplitAsmConfig`, or a one-off
+`:SplitAsmOpen ./path/to/program` invocation.
+
+===============================================================================
+7. LIMITATIONS\t\t\t\t\t*splitasm-limitations*
+
+  - SplitAsm reads assembly with:
+      objdump -d -Mintel --no-show-raw-insn -l -C
+  - Source mapping depends on debug line markers in the binary.
+  - Auto-detection is heuristic and may not match every project layout.
+  - `clean_asm = true` improves readability, but does not preserve raw objdump
+    formatting exactly.
+  - `compiler_cmd` is executed as provided; SplitAsm does not manage external
+    build tools or infer project-specific build steps.
+  - Current docs and smoke tests cover Unix-like objdump/path behavior.
+
+===============================================================================
+vim:tw=78:ts=8:noet:ft=help

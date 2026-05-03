@@ -1,0 +1,5 @@
+:SplitAsm	splitasm.txt	/*:SplitAsm*
+:SplitAsmConfig	splitasm.txt	/*:SplitAsmConfig*
+:SplitAsmOpen	splitasm.txt	/*:SplitAsmOpen*
+:SplitAsmSetup	splitasm.txt	/*:SplitAsmSetup*
+:SplitAsmToggleSync	splitasm.txt	/*:SplitAsmToggleSync*
