@@ -36,11 +36,10 @@ function M.setup(splitasm)
     })
 
     create_command("SplitAsmConfig", function()
-        splitasm.show_status()
         splitasm.show_config()
         splitasm.configure()
     end, {
-        desc = "Show SplitAsm status and settings, then prompt for updates",
+        desc = "Show SplitAsm settings, then prompt for updates",
     })
 
     create_command("SplitAsmToggleSync", function()

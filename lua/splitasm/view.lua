@@ -133,12 +133,6 @@ function M.set_split_keymaps(state, callbacks)
         desc = "Refresh assembly view",
     })
 
-    vim.keymap.set("n", "?", callbacks.show_status, {
-        buffer = state.asm_buf,
-        silent = true,
-        desc = "Show SplitAsm status",
-    })
-
     vim.keymap.set("n", "s", callbacks.toggle_sync, {
         buffer = state.asm_buf,
         silent = true,

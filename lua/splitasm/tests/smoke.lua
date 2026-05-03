@@ -165,19 +165,15 @@ local function test_setup_is_idempotent_after_registration()
     assert_eq(splitasm_config.get().clean_asm, true, "setup should update later configuration values")
 end
 
-local function test_config_command_shows_status_before_prompting()
+local function test_config_command_shows_settings_before_prompting()
     cleanup_splitasm()
 
     -- Arrange
     splitasm.setup({ auto_sync = true, clean_asm = false })
     local calls = {}
-    local original_show_status = splitasm.show_status
     local original_show_config = splitasm.show_config
     local original_configure = splitasm.configure
 
-    splitasm.show_status = function()
-        calls[#calls + 1] = "status"
-    end
     splitasm.show_config = function()
         calls[#calls + 1] = "config"
     end
@@ -189,14 +185,12 @@ local function test_config_command_shows_status_before_prompting()
     vim.cmd("SplitAsmConfig")
 
     -- Cleanup
-    splitasm.show_status = original_show_status
     splitasm.show_config = original_show_config
     splitasm.configure = original_configure
 
     -- Assert
-    assert_eq(calls[1], "status", "SplitAsmConfig should show runtime status first")
-    assert_eq(calls[2], "config", "SplitAsmConfig should still show saved settings")
-    assert_eq(calls[3], "configure", "SplitAsmConfig should still prompt for updates")
+    assert_eq(calls[1], "config", "SplitAsmConfig should show saved settings first")
+    assert_eq(calls[2], "configure", "SplitAsmConfig should still prompt for updates")
 end
 
 local function test_setup_command_runs_guided_wizard()
@@ -450,77 +444,16 @@ local function test_open_keeps_existing_view_when_refresh_validation_fails()
     assert_eq(vim.api.nvim_buf_get_lines(original_asm_buf, 0, -1, false)[1], original_lines[1], "failed refresh should preserve asm contents")
 end
 
-local function test_open_installs_status_keymap_for_the_asm_view()
-    cleanup_splitasm()
-
-    -- Arrange
-    local source_path = write_source_file("status-map", {
-        "int main(void) {",
-        "  return 0;",
-        "}",
-    })
-    local asm_output = table.concat({
-        source_path .. ":1",
-        "0000000000000000 <main()>:",
-        "  0000: ret",
-    }, "\n")
-
-    vim.cmd("edit " .. vim.fn.fnameescape(source_path))
-
-    -- Act
-    with_mock_runtime({
-        load_asm_session = function()
-            return {
-                asm_output = asm_output,
-                full_exec_path = "/tmp/demo-bin",
-            }
-        end,
-        inspect = function(opts)
-            return {
-                config = opts.config,
-                cwd = vim.uv.cwd(),
-                source_path = opts.source_path,
-                exec_path_override = opts.exec_path_override,
-                configured_path = nil,
-                detected_candidates = {},
-                resolved_exec_path = "/tmp/demo-bin",
-                full_exec_path = "/tmp/demo-bin",
-                executable_exists = true,
-                objdump_available = true,
-            }
-        end,
-        status_lines = function(status)
-            return { "Executable (override): " .. status.resolved_exec_path }
-        end,
-    }, function()
-        splitasm.setup({ auto_sync = true, clean_asm = true })
-        splitasm.open("./demo-bin")
-    end)
-
-    -- Assert
-    local state = splitasm_state.get()
-    local maps = vim.api.nvim_buf_get_keymap(state.asm_buf, "n")
-    local seen_status_map = false
-    for _, map in ipairs(maps) do
-        if map.lhs == "?" then
-            seen_status_map = true
-            break
-        end
-    end
-    assert_truthy(seen_status_map, "asm buffer should expose a status keymap")
-end
-
 function M.run()
     test_setup_registers_publishable_commands_and_aliases()
     test_setup_is_idempotent_after_registration()
-    test_config_command_shows_status_before_prompting()
+    test_config_command_shows_settings_before_prompting()
     test_setup_command_runs_guided_wizard()
     test_toggle_sync_command_updates_config_and_notifies()
     test_setup_validates_publishable_user_config()
     test_open_returns_early_when_runtime_has_no_output()
     test_open_renders_filtered_output_and_syncs_from_source_cursor()
     test_open_keeps_existing_view_when_refresh_validation_fails()
-    test_open_installs_status_keymap_for_the_asm_view()
     cleanup_splitasm()
 end
 

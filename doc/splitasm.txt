@@ -24,7 +24,6 @@ Features:
   - toggle cursor sync between source and assembly
   - optionally clean objdump output for a smaller view
   - guided setup/config commands for first-run setup and recovery
-  - runtime status output from notifications and the assembly split `?` mapping
   - validation errors for unsupported `setup()` option types
 
 ===============================================================================
@@ -40,7 +39,7 @@ Features:
 
 Example with lazy.nvim: >lua
   {
-    "NickTsaizer/splitasm.nvim",
+    "author/splitasm.nvim",
     cmd = {
       "SplitAsm",
       "SplitAsmOpen",
@@ -82,7 +81,7 @@ Configured setup: >lua
 
                                         *:SplitAsmConfig*
 :SplitAsmConfig
-    Show runtime status, show the current settings, then prompt for updates.
+    Show the current settings, then prompt for updates.
 
                                         *:SplitAsmToggleSync*
 :SplitAsmToggleSync
@@ -149,7 +148,6 @@ Open a specific executable once: >vim
 Assembly split keys:
   q   close the assembly split
   r   refresh the assembly view
-  ?   show runtime status, resolved executable details, and dependency hints
   s   toggle sync
 
 The same `s` mapping is also added to source buffers while a SplitAsm session is

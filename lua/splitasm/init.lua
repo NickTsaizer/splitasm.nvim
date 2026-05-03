@@ -8,7 +8,6 @@ local view = require("splitasm.view")
 local M = {}
 
 local state = splitasm_state.get()
-
 local function notify(message, level, opts)
     vim.notify(message, level or vim.log.levels.INFO, vim.tbl_extend("force", { title = "splitasm" }, opts or {}))
 end
@@ -23,39 +22,6 @@ end
 
 local function config_summary_lines(config)
     return splitasm_config.describe(config)
-end
-
-local function build_runtime_status_lines(status)
-    return require("splitasm.runtime").status_lines(status)
-end
-
-local function build_status_lines(opts)
-    opts = opts or {}
-
-    local config = get_config()
-    local status = require("splitasm.runtime").inspect({
-        config = config,
-        exec_path_override = opts.exec_path_override,
-        source_path = opts.source_path or vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()),
-    })
-
-    local lines = {
-        "SplitAsm status:",
-        table.unpack(config_summary_lines(config)),
-        table.unpack(build_runtime_status_lines(status)),
-    }
-
-    if opts.loaded_exec_path then
-        lines[#lines + 1] = "Loaded executable: " .. opts.loaded_exec_path
-    end
-
-    if state.asm_win and vim.api.nvim_win_is_valid(state.asm_win) then
-        lines[#lines + 1] = "Assembly view: open"
-    else
-        lines[#lines + 1] = "Assembly view: closed"
-    end
-
-    return lines
 end
 
 local function notify_runtime_load_error(err)
@@ -86,11 +52,9 @@ local function toggle_auto_sync(should_notify)
 end
 
 local function notify_config_updated(config)
-    local lines = {
-        "SplitAsm configuration updated.",
-        table.unpack(config_summary_lines(config)),
-        "Next step: run :SplitAsmOpen to inspect the detected executable, or pass a path like :SplitAsmOpen ./build/app.",
-    }
+    local lines = { "SplitAsm configuration updated." }
+    vim.list_extend(lines, config_summary_lines(config))
+    lines[#lines + 1] = "Next step: run :SplitAsmOpen to inspect the detected executable, or pass a path like :SplitAsmOpen ./build/app."
 
     notify(table.concat(lines, "\n"), vim.log.levels.INFO)
 end
@@ -162,19 +126,11 @@ end
 
 function M.setup_wizard()
     local config = get_config()
-    notify(
-        "SplitAsm setup: optionally enter a build command and executable path. Leave either prompt blank to keep automatic detection enabled.",
-        vim.log.levels.INFO
-    )
     prompt_for_compiler_command(config, { setup_mode = true })
 end
 
 function M.show_config()
     notify(table.concat(config_summary_lines(get_config()), "\n"), vim.log.levels.INFO)
-end
-
-function M.show_status(opts)
-    notify(table.concat(build_status_lines(opts), "\n"), vim.log.levels.INFO)
 end
 
 function M.open(exec_path_override)
@@ -234,13 +190,6 @@ function M.open(exec_path_override)
         refresh = function()
             M.open(exec_path_override)
         end,
-        show_status = function()
-            M.show_status({
-                exec_path_override = exec_path_override,
-                loaded_exec_path = session.full_exec_path,
-                source_path = current_file,
-            })
-        end,
         toggle_sync = function()
             toggle_auto_sync(true)
         end,
@@ -250,7 +199,7 @@ function M.open(exec_path_override)
         table.concat({
             "SplitAsm open.",
             "Loaded executable: " .. session.full_exec_path,
-            "Press 'r' to refresh, '?' for status, and 's' to toggle sync.",
+            "Press 'r' to refresh and 's' to toggle sync.",
         }, "\n"),
         vim.log.levels.INFO
     )

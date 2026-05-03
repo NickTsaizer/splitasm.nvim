@@ -10,7 +10,6 @@ View `objdump` output beside your source and keep both sides in sync while you r
 - Sync cursor movement between source and assembly
 - Optionally clean `objdump` output for a smaller view
 - Guided `:SplitAsmSetup` / `:SplitAsmConfig` flows for first-run setup and recovery
-- Runtime status reporting in notifications and the assembly split via `?`
 - Clear validation errors when `setup()` receives unsupported option types
 
 ## Requirements
@@ -26,7 +25,7 @@ View `objdump` output beside your source and keep both sides in sync while you r
 
 ```lua
 {
-  "NickTsaizer/splitasm.nvim",
+  "author/splitasm.nvim",
   cmd = {
     "SplitAsm",
     "SplitAsmOpen",
@@ -99,7 +98,6 @@ Use the split buffer keys:
 
 - `q` — close the assembly split
 - `r` — refresh the assembly view
-- `?` — show runtime status, resolved executable details, and dependency hints
 - `s` — toggle sync
 
 `SplitAsmConfig` is the main after-MVP recovery path: it shows runtime status first, then the saved configuration, then prompts for updates.
@@ -142,11 +140,3 @@ require("splitasm").setup({
 ## Help
 
 After installation, see `:help splitasm`.
-
-## Development
-
-Run the headless test suite from the repository root:
-
-```sh
-XDG_CACHE_HOME="$PWD/.cache" nvim --headless -u NONE -c "lua dofile('scripts/run_splitasm_tests.lua')"
-```
