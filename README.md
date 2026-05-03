@@ -2,7 +2,7 @@
 
 View `objdump` output beside your source and keep both sides in sync while you read compiled code.
 
-![shaderdebug preview](./doc/assets/splitasm_preview.gif)
+![splitasm preview](./doc/assets/splitasm_preview.gif)
 
 
 ## Features
