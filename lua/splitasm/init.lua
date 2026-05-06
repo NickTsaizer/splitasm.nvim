@@ -172,7 +172,11 @@ function M.open(exec_path_override)
 
     local asm_lines = vim.split(session.asm_output, "\n", { plain = true, trimempty = false })
 
-    local parsed = parser.parse(asm_lines, { clean_asm = config.clean_asm })
+    local parsed = parser.parse(asm_lines, {
+        clean_asm = config.clean_asm,
+        source_path_mappings = config.source_path_mappings,
+        current_source_path = current_file,
+    })
     local filtered_lines = splitasm_state.apply_parsed_asm(parsed)
 
     view.ensure_asm_buffer(state)

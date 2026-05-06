@@ -71,6 +71,9 @@ require("splitasm").setup()
 require("splitasm").setup({
   compiler_cmd = "cargo build --release",
   executable_path = "./target/release/myapp",
+  source_path_mappings = {
+    { from = "/work/src", to = vim.fn.getcwd() },
+  },
   auto_sync = true,
   clean_asm = false,
   source_row_colors = true,
@@ -113,6 +116,7 @@ On Windows, auto-detection also tries `.exe` variants.
 require("splitasm").setup({
   compiler_cmd = nil,
   executable_path = nil,
+   source_path_mappings = {},
   auto_sync = true,
   clean_asm = false,
   source_row_colors = true,
@@ -123,6 +127,7 @@ require("splitasm").setup({
 | --- | --- | --- |
 | `compiler_cmd` | `nil` | Command to run before loading assembly |
 | `executable_path` | `nil` | Executable to inspect; when unset, SplitAsm auto-detects one, including `.exe` candidates on Windows |
+| `source_path_mappings` | `{}` | Remap debug-info source prefixes to local paths, e.g. `{ from = "/work/src", to = vim.fn.getcwd() }` for container builds |
 | `auto_sync` | `true` | Keep source and assembly cursors aligned on movement |
 | `clean_asm` | `false` | Remove source markers and normalize instruction text |
 | `source_row_colors` | `true` | Apply stable subtle line highlights to asm rows that map back to a source line |
@@ -157,9 +162,34 @@ SplitAsm reads assembly through one of these backend-specific commands:
 - GNU `objdump -d -Mintel --no-show-raw-insn -l -C`
 - LLVM `llvm-objdump -d -M intel --no-show-raw-insn -l -C`
 
+## Docker / remote build path mapping
+
+If your binary is built in a container or remote environment, the debug markers
+inside `objdump` may point at paths that do not exist on your host machine.
+Use `source_path_mappings` to rewrite those prefixes before SplitAsm syncs
+between source and assembly.
+
+```lua
+require("splitasm").setup({
+  executable_path = "./out/demo",
+  source_path_mappings = {
+    { from = "/work/src", to = vim.fn.getcwd() .. "/src" },
+  },
+})
+```
+
+This is especially useful when you compile in Docker with a different in-
+container working directory than your local checkout.
+
+When `source_path_mappings` is empty or does not match, SplitAsm also tries a
+best-effort session-local fallback based on the current file and the debug path
+suffix. Explicit mappings always win.
+
 ## Limitations
 
 - Source-to-assembly mapping depends on debug line markers in the binary
+- Container or remote builds may need `source_path_mappings` when debug paths do
+  not match local source paths
 - Auto-detection is heuristic and may not fit every project layout
 - `clean_asm = true` improves readability, but slightly changes raw `objdump`
   presentation

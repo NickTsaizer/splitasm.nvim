@@ -62,6 +62,9 @@ Configured setup: >lua
   require("splitasm").setup({
     compiler_cmd = "cargo build --release",
     executable_path = "./target/release/myapp",
+    source_path_mappings = {
+      { from = "/work/src", to = vim.fn.getcwd() },
+    },
     auto_sync = true,
     clean_asm = false,
     source_row_colors = true,
@@ -102,6 +105,7 @@ Defaults: >lua
   require("splitasm").setup({
     compiler_cmd = nil,
     executable_path = nil,
+    source_path_mappings = {},
     auto_sync = true,
     clean_asm = false,
     source_row_colors = true,
@@ -116,6 +120,15 @@ Options:
   executable_path (string|nil)
     Executable to inspect. When unset, SplitAsm auto-detects one from the
     current working directory.
+
+  source_path_mappings (table)
+    List of `{ from = "...", to = "..." }` path-prefix remaps applied to
+    debug-info source markers before SplitAsm syncs source and assembly. This
+    is useful for Docker or remote builds whose debug paths differ from local
+    host paths.
+    When no explicit mapping matches, SplitAsm also tries a best-effort
+    session-local fallback inferred from the current file path. Explicit
+    mappings always win.
 
   auto_sync       (boolean)
     Keep source and assembly cursors aligned while moving.
@@ -167,6 +180,15 @@ Assembly split keys:
 The same `s` mapping is also added to source buffers while a SplitAsm session is
 active.
 
+Docker / remote-build example: >lua
+  require("splitasm").setup({
+    executable_path = "./out/demo",
+    source_path_mappings = {
+      { from = "/work/src", to = vim.fn.getcwd() .. "/src" },
+    },
+  })
+<
+
 If executable resolution fails, SplitAsm reports the auto-detect search paths
 and points you back to `:SplitAsmSetup`, `:SplitAsmConfig`, or a one-off
 `:SplitAsmOpen ./path/to/program` invocation.
@@ -178,6 +200,8 @@ and points you back to `:SplitAsmSetup`, `:SplitAsmConfig`, or a one-off
       GNU `objdump -d -Mintel --no-show-raw-insn -l -C`
       LLVM `llvm-objdump -d -M intel --no-show-raw-insn -l -C`
   - Source mapping depends on debug line markers in the binary.
+  - Container or remote builds may require `source_path_mappings` when debug
+    paths do not match local source paths.
   - Auto-detection is heuristic and may not match every project layout.
   - Windows auto-detection tries `.exe` variants, but explicit executable
     paths may still be needed for unusual build outputs.

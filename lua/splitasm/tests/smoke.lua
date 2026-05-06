@@ -652,6 +652,127 @@ local function test_open_keeps_existing_view_when_refresh_validation_fails()
     assert_eq(vim.api.nvim_buf_get_lines(original_asm_buf, 0, -1, false)[1], original_lines[1], "failed refresh should preserve asm contents")
 end
 
+local function test_open_remaps_container_debug_paths_to_local_source_files()
+    cleanup_splitasm()
+
+    -- Arrange
+    local source_path = write_source_file("docker-path-map", {
+        "#include <cstdint>",
+        "",
+        "int helper(int value) {",
+        "  int doubled = value * 2;",
+        "  return doubled + 1;",
+        "}",
+    })
+    local source_dir = vim.fs.dirname(source_path)
+    local container_source_path = "/work/src/" .. vim.fs.basename(source_path)
+    local asm_output = table.concat({
+        container_source_path .. ":4",
+        "0000000000000000 <helper(int)>:",
+        "  0000: mov eax,ebx",
+        container_source_path .. ":5",
+        "  0008: ret",
+    }, "\n")
+
+    vim.cmd("edit " .. vim.fn.fnameescape(source_path))
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+
+    -- Act
+    with_mock_runtime({
+        load_asm_session = function()
+            return {
+                asm_output = asm_output,
+                full_exec_path = "/tmp/docker-demo-bin",
+            }
+        end,
+    }, function()
+        with_captured_notify(function(messages)
+            splitasm.setup({
+                auto_sync = true,
+                clean_asm = true,
+                source_path_mappings = {
+                    { from = "/work/src", to = source_dir },
+                },
+            })
+            splitasm.open("./docker-demo-bin")
+
+            local state = splitasm_state.get()
+            assert_truthy(state.file_line_maps[source_path], "open should remap debug markers to the local source path")
+            assert_eq(state.current_file, source_path, "open should keep the local source file as current")
+            assert_eq(state.asm_to_file[2], source_path, "asm-to-file mappings should use the local source path")
+            assert_eq(vim.api.nvim_win_get_cursor(state.asm_win)[1], 2, "source-to-asm sync should still land on the remapped instruction")
+
+            vim.api.nvim_set_current_win(state.asm_win)
+            vim.api.nvim_win_set_cursor(state.asm_win, { 3, 0 })
+            vim.api.nvim_exec_autocmds("CursorMoved", { buffer = state.asm_buf, modeline = false })
+            vim.wait(100, function()
+                return vim.api.nvim_win_get_cursor(state.source_win)[1] == 5
+            end)
+
+            assert_eq(vim.api.nvim_buf_get_name(state.source_buf), source_path, "asm-to-source sync should reopen the local host file")
+            assert_eq(vim.api.nvim_win_get_cursor(state.source_win)[1], 5, "asm-to-source sync should jump to the remapped host line")
+            assert_eq(#messages, 1, "open should only emit its success notification when remapping works")
+        end)
+    end)
+end
+
+local function test_open_infers_container_debug_paths_from_current_file()
+    cleanup_splitasm()
+
+    -- Arrange
+    local source_path = write_source_file("docker-auto-map", {
+        "#include <cstdint>",
+        "",
+        "int helper(int value) {",
+        "  int doubled = value * 2;",
+        "  return doubled + 1;",
+        "}",
+    })
+    local container_source_path = "/work/src/" .. vim.fs.basename(source_path)
+    local asm_output = table.concat({
+        container_source_path .. ":4",
+        "0000000000000000 <helper(int)>:",
+        "  0000: mov eax,ebx",
+        container_source_path .. ":5",
+        "  0008: ret",
+    }, "\n")
+
+    vim.cmd("edit " .. vim.fn.fnameescape(source_path))
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+
+    -- Act
+    with_mock_runtime({
+        load_asm_session = function()
+            return {
+                asm_output = asm_output,
+                full_exec_path = "/tmp/docker-demo-bin",
+            }
+        end,
+    }, function()
+        with_captured_notify(function(messages)
+            splitasm.setup({ auto_sync = true, clean_asm = true })
+            splitasm.open("./docker-demo-bin")
+
+            local state = splitasm_state.get()
+            assert_truthy(state.file_line_maps[source_path], "open should infer a session mapping from the current source file")
+            assert_eq(#state.inferred_source_path_mappings, 1, "open should keep inferred mappings in session state")
+            assert_eq(state.inferred_source_path_mappings[1].from, "/work/src", "session state should record the inferred debug prefix")
+            assert_eq(state.asm_to_file[2], source_path, "inferred mappings should update asm-to-file navigation")
+
+            vim.api.nvim_set_current_win(state.asm_win)
+            vim.api.nvim_win_set_cursor(state.asm_win, { 3, 0 })
+            vim.api.nvim_exec_autocmds("CursorMoved", { buffer = state.asm_buf, modeline = false })
+            vim.wait(100, function()
+                return vim.api.nvim_win_get_cursor(state.source_win)[1] == 5
+            end)
+
+            assert_eq(vim.api.nvim_buf_get_name(state.source_buf), source_path, "asm-to-source sync should reopen the local host file via inferred mapping")
+            assert_eq(vim.api.nvim_win_get_cursor(state.source_win)[1], 5, "inferred mapping should jump to the remapped host line")
+            assert_eq(#messages, 1, "successful inferred mapping should avoid warning notifications")
+        end)
+    end)
+end
+
 function M.run()
     test_setup_registers_publishable_commands_and_aliases()
     test_setup_is_idempotent_after_registration()
@@ -665,6 +786,8 @@ function M.run()
     test_open_repaints_stable_source_row_colors_across_refreshes()
     test_open_keeps_same_tone_within_source_row_and_shifts_between_source_rows()
     test_open_keeps_existing_view_when_refresh_validation_fails()
+    test_open_remaps_container_debug_paths_to_local_source_files()
+    test_open_infers_container_debug_paths_from_current_file()
     cleanup_splitasm()
 end
 

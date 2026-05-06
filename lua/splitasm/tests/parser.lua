@@ -199,6 +199,112 @@ local function test_parse_normalizes_windows_paths_in_public_results()
     assert_source_metadata(parsed.asm_metadata[3], "C:/work/demo/main.c", 4, "C:/work/demo/main.c:4", 1, "line 4 windows metadata")
 end
 
+local function test_build_line_map_remaps_container_paths_to_local_paths()
+    -- Arrange
+    local asm_lines = {
+        "/work/src/main.cpp:6",
+        "  0000: mov eax,ebx",
+        "/work/src/lib/helper.cpp:9",
+        "  0004: ret",
+    }
+
+    -- Act
+    local file_line_maps, asm_to_source, asm_to_file, asm_metadata = parser.build_line_map(asm_lines, {
+        source_path_mappings = {
+            { from = "/work/src", to = "/home/nick/project/src" },
+        },
+    })
+
+    -- Assert
+    assert_range(file_line_maps["/home/nick/project/src/main.cpp"][6], 2, 2, "main.cpp should remap to host path")
+    assert_range(file_line_maps["/home/nick/project/src/lib/helper.cpp"][9], 4, 4, "nested helper path should remap to host path")
+    assert_eq(asm_to_source[2], 6, "remapped source line should stay intact")
+    assert_eq(asm_to_file[2], "/home/nick/project/src/main.cpp", "asm mapping should store host path")
+    assert_eq(asm_to_file[4], "/home/nick/project/src/lib/helper.cpp", "nested asm mapping should store host path")
+    assert_source_metadata(
+        asm_metadata[2],
+        "/home/nick/project/src/main.cpp",
+        6,
+        "/home/nick/project/src/main.cpp:6",
+        1,
+        "metadata should use remapped host path"
+    )
+end
+
+local function test_parse_prefers_longest_matching_source_path_mapping()
+    -- Arrange
+    local asm_lines = {
+        "/work/src/generated/main.cpp:4",
+        "  0000: ret",
+    }
+
+    -- Act
+    local parsed = parser.parse(asm_lines, {
+        clean_asm = true,
+        source_path_mappings = {
+            { from = "/work/src", to = "/host/src" },
+            { from = "/work/src/generated", to = "/host/generated" },
+        },
+    })
+
+    -- Assert
+    assert_range(parsed.file_line_maps["/host/generated/main.cpp"][4], 1, 1, "longest matching mapping should win")
+    assert_eq(parsed.asm_to_file[1], "/host/generated/main.cpp", "asm file map should use longest mapping result")
+    assert_source_metadata(parsed.asm_metadata[1], "/host/generated/main.cpp", 4, "/host/generated/main.cpp:4", 1, "metadata should keep longest-match path")
+end
+
+local function test_infer_source_path_mapping_uses_shared_filename_suffix()
+    -- Arrange + Act
+    local inferred = parser.infer_source_path_mapping("/work/src/main.cpp", "/home/nick/project/src/main.cpp")
+
+    -- Assert
+    assert_truthy(inferred, "inference should produce a mapping for shared file suffixes")
+    assert_eq(inferred.from, "/work", "inference should trim the shared suffix from the debug path")
+    assert_eq(inferred.to, "/home/nick/project", "inference should trim the shared suffix from the local path")
+end
+
+local function test_parse_infers_fallback_source_mapping_from_current_file()
+    -- Arrange
+    local asm_lines = {
+        "/work/src/main.cpp:8",
+        "  0000: ret",
+    }
+
+    -- Act
+    local parsed = parser.parse(asm_lines, {
+        clean_asm = true,
+        current_source_path = "/home/nick/project/src/main.cpp",
+    })
+
+    -- Assert
+    assert_range(parsed.file_line_maps["/home/nick/project/src/main.cpp"][8], 1, 1, "inferred mappings should remap markers to the current file")
+    assert_eq(parsed.asm_to_file[1], "/home/nick/project/src/main.cpp", "asm mapping should use the inferred host path")
+    assert_eq(#parsed.inferred_source_path_mappings, 1, "parse should report inferred mappings for the session")
+    assert_eq(parsed.inferred_source_path_mappings[1].from, "/work", "session mapping should keep the inferred debug prefix")
+end
+
+local function test_parse_prefers_explicit_mapping_over_inferred_fallback()
+    -- Arrange
+    local asm_lines = {
+        "/work/src/main.cpp:8",
+        "  0000: ret",
+    }
+
+    -- Act
+    local parsed = parser.parse(asm_lines, {
+        clean_asm = true,
+        current_source_path = "/home/nick/project/src/main.cpp",
+        source_path_mappings = {
+            { from = "/work/src", to = "/explicit/src" },
+        },
+    })
+
+    -- Assert
+    assert_range(parsed.file_line_maps["/explicit/src/main.cpp"][8], 1, 1, "explicit mapping should override inferred fallback")
+    assert_nil(parsed.file_line_maps["/home/nick/project/src/main.cpp"], "inferred fallback should not win over explicit mapping")
+    assert_eq(parsed.asm_to_file[1], "/explicit/src/main.cpp", "asm file mapping should prefer explicit remaps")
+end
+
 function M.run()
     test_build_line_map_tracks_multiple_source_ranges()
     test_parse_remaps_filtered_output_for_public_open_flow()
@@ -206,6 +312,11 @@ function M.run()
     test_parse_with_cleaning_drops_empty_source_ranges()
     test_build_line_map_normalizes_windows_source_markers()
     test_parse_normalizes_windows_paths_in_public_results()
+    test_build_line_map_remaps_container_paths_to_local_paths()
+    test_parse_prefers_longest_matching_source_path_mapping()
+    test_infer_source_path_mapping_uses_shared_filename_suffix()
+    test_parse_infers_fallback_source_mapping_from_current_file()
+    test_parse_prefers_explicit_mapping_over_inferred_fallback()
 end
 
 local function run_as_script()
