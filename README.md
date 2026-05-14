@@ -41,6 +41,24 @@ Within the assembly split:
 The same `s` mapping is also added to source buffers while a SplitAsm session
 is active.
 
+## Requirements and backend behavior
+
+SplitAsm depends on the following conditions:
+
+- Neovim 0.9+
+- A supported disassembler backend on your `PATH`:
+  - GNU `objdump` / `objdump.exe`
+  - LLVM `llvm-objdump` / `llvm-objdump.exe`
+- Any external build tool referenced by `compiler_cmd` must already be
+  installed and runnable from Neovim's current working directory
+- A compiled executable with debug line info for best source mapping
+
+SplitAsm reads assembly through one of these backend-specific commands:
+
+- GNU `objdump -d -Mintel --no-show-raw-insn -l -C`
+- LLVM `llvm-objdump -d -M intel --no-show-raw-insn -l -C`
+
+
 ## Installation
 
 ### lazy.nvim
@@ -144,23 +162,6 @@ option types up front and reports invalid values immediately.
 | `:SplitAsmSetup` | Guided setup for build command and executable path |
 | `:SplitAsmConfig` | Show current settings, then prompt for updates |
 | `:SplitAsmToggleSync` | Toggle automatic source/assembly sync |
-
-## Requirements and backend behavior
-
-SplitAsm depends on the following conditions:
-
-- Neovim 0.9+
-- A supported disassembler backend on your `PATH`:
-  - GNU `objdump` / `objdump.exe`
-  - LLVM `llvm-objdump` / `llvm-objdump.exe`
-- Any external build tool referenced by `compiler_cmd` must already be
-  installed and runnable from Neovim's current working directory
-- A compiled executable with debug line info for best source mapping
-
-SplitAsm reads assembly through one of these backend-specific commands:
-
-- GNU `objdump -d -Mintel --no-show-raw-insn -l -C`
-- LLVM `llvm-objdump -d -M intel --no-show-raw-insn -l -C`
 
 ## Docker / remote build path mapping
 
