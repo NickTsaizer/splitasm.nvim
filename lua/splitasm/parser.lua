@@ -341,17 +341,17 @@ local function normalize_output_line(line, clean_asm)
         return normalized
     end
 
-    if not clean_asm then
-        return line
+    local function_name = line:match("^%x+ <(.+)>:$")
+    if function_name then
+        return function_name .. ":"
     end
 
     if line:match("^%S.*%(%):$") then
         return nil
     end
 
-    local function_name = line:match("^%x+ <(.+)>:$")
-    if function_name then
-        return function_name .. ":"
+    if not clean_asm then
+        return line
     end
 
     return line

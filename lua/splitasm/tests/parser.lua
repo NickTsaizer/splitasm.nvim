@@ -130,7 +130,7 @@ local function test_parse_without_cleaning_preserves_non_source_lines()
 
     -- Assert
     assert_eq(#parsed.asm_lines, 3, "asm lines preserved without cleaning")
-    assert_eq(parsed.asm_lines[1], "0000000000000000 <main()>:", "function label preserved")
+    assert_eq(parsed.asm_lines[1], "main():", "function label simplified")
     assert_eq(parsed.asm_lines[3], "  note line", "non-source note preserved")
     assert_range(parsed.file_line_maps["/tmp/example.c"][10], 2, 3, "unclean mapping keeps instruction range")
 end
