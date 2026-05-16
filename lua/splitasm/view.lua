@@ -50,16 +50,18 @@ function M.ensure_asm_window(state)
     return state.asm_win
 end
 
-function M.render_asm_buffer(state, asm_lines, opts)
-    opts = opts or {}
+function M.render_asm_buffer(state, asm_lines, config)
+    config = config or {}
     local asm_win = M.ensure_asm_window(state)
     if not asm_win then
         return false
     end
 
     vim.api.nvim_win_set_buf(asm_win, M.ensure_asm_buffer(state))
-    vim.wo[asm_win].number = true
+    vim.wo[asm_win].number = config.show_line_numbers ~= false
     vim.wo[asm_win].relativenumber = false
+    vim.wo[asm_win].signcolumn = "no"
+    vim.wo[asm_win].foldcolumn = "0"
 
     vim.bo[state.asm_buf].modifiable = true
     vim.bo[state.asm_buf].readonly = false
@@ -71,7 +73,11 @@ function M.render_asm_buffer(state, asm_lines, opts)
     vim.bo[state.asm_buf].buftype = "nofile"
     vim.bo[state.asm_buf].buflisted = false
     vim.bo[state.asm_buf].swapfile = false
-    source_row_colors.render(state.asm_buf, state.asm_metadata, { enabled = opts.source_row_colors })
+    source_row_colors.render(state.asm_buf, state.asm_metadata, {
+        enabled = config.source_row_colors,
+        show_line_numbers = config.show_line_numbers,
+        hide_address = config.hide_address,
+    })
     return true
 end
 

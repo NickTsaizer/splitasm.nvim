@@ -18,7 +18,7 @@ disassembled output. SplitAsm keeps both views in a single workspace:
 - disassembly on the other
 - optional build step before loading
 - cursor sync between both buffers
-- optional cleaned asm for easier reading
+- line number and address column display controls
 - stable row coloring for asm lines that map back to source
 
 ## Typical workflow
@@ -72,6 +72,8 @@ SplitAsm reads assembly through one of these backend-specific commands:
     "SplitAsmSetup",
     "SplitAsmConfig",
     "SplitAsmToggleSync",
+    "SplitAsmToggleLineNumbers",
+    "SplitAsmToggleHideAddress",
   },
   opts = {},
 }
@@ -93,8 +95,9 @@ require("splitasm").setup({
     { from = "/work/src", to = vim.fn.getcwd() },
   },
   auto_sync = true,
-  clean_asm = false,
+  hide_address = false,
   source_row_colors = true,
+  show_line_numbers = true,
 })
 ```
 
@@ -134,10 +137,11 @@ On Windows, auto-detection also tries `.exe` variants.
 require("splitasm").setup({
   compiler_cmd = nil,
   executable_path = nil,
-   source_path_mappings = {},
+  source_path_mappings = {},
   auto_sync = true,
-  clean_asm = false,
+  hide_address = false,
   source_row_colors = true,
+  show_line_numbers = true,
 })
 ```
 
@@ -147,8 +151,9 @@ require("splitasm").setup({
 | `executable_path` | `nil` | Executable to inspect; when unset, SplitAsm auto-detects one, including `.exe` candidates on Windows |
 | `source_path_mappings` | `{}` | Remap debug-info source prefixes to local paths, e.g. `{ from = "/work/src", to = vim.fn.getcwd() }` for container builds |
 | `auto_sync` | `true` | Keep source and assembly cursors aligned on movement |
-| `clean_asm` | `false` | Remove source markers and normalize instruction text |
+| `hide_address` | `false` | Strip address column from assembly output |
 | `source_row_colors` | `true` | Apply stable subtle line highlights to asm rows that map back to a source line |
+| `show_line_numbers` | `true` | Show line number column in the assembly split |
 
 `require("splitasm").setup()` remains intentionally small. SplitAsm validates
 option types up front and reports invalid values immediately.
@@ -162,6 +167,8 @@ option types up front and reports invalid values immediately.
 | `:SplitAsmSetup` | Guided setup for build command and executable path |
 | `:SplitAsmConfig` | Show current settings, then prompt for updates |
 | `:SplitAsmToggleSync` | Toggle automatic source/assembly sync |
+| `:SplitAsmToggleLineNumbers` | Toggle line number column |
+| `:SplitAsmToggleHideAddress` | Toggle address column visibility |
 
 ## Docker / remote build path mapping
 
@@ -192,8 +199,7 @@ suffix. Explicit mappings always win.
 - Container or remote builds may need `source_path_mappings` when debug paths do
   not match local source paths
 - Auto-detection is heuristic and may not fit every project layout
-- `clean_asm = true` improves readability, but slightly changes raw `objdump`
-  presentation
+- `hide_address = true` improves readability, but removes address and label detail
 - Build failures and missing executables are reported clearly, but SplitAsm
   does not infer project-specific build steps for you
 - SplitAsm only supports GNU/LLVM `objdump`-style backends

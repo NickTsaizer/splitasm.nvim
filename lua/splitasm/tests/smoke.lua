@@ -149,6 +149,8 @@ local function test_setup_registers_publishable_commands_and_aliases()
         "SplitAsmSetup",
         "SplitAsmConfig",
         "SplitAsmToggleSync",
+        "SplitAsmToggleLineNumbers",
+        "SplitAsmToggleHideAddress",
     }
     local spec_path = vim.fs.joinpath(ROOT, "lua", "plugins", "splitasm.lua")
     local spec
@@ -161,7 +163,7 @@ local function test_setup_registers_publishable_commands_and_aliases()
     local original_open = splitasm.open
 
     -- Act
-    splitasm.setup({ auto_sync = true, clean_asm = true })
+    splitasm.setup({ auto_sync = true, hide_address = true })
     splitasm.open = function(arg)
         seen_args[#seen_args + 1] = arg
     end
@@ -186,24 +188,24 @@ local function test_setup_is_idempotent_after_registration()
     cleanup_splitasm()
 
     -- Arrange
-    splitasm.setup({ auto_sync = true, clean_asm = false })
+    splitasm.setup({ auto_sync = true, hide_address = false })
     local command_count_before = count_keys(command_names())
 
     -- Act
-    splitasm.setup({ auto_sync = false, clean_asm = true })
+    splitasm.setup({ auto_sync = false, hide_address = true })
 
     -- Assert
     local commands = command_names()
     assert_eq(count_keys(commands), command_count_before, "setup should not register duplicate commands")
     assert_eq(splitasm_config.get().auto_sync, false, "setup should still refresh configuration on later calls")
-    assert_eq(splitasm_config.get().clean_asm, true, "setup should update later configuration values")
+    assert_eq(splitasm_config.get().hide_address, true, "setup should update later configuration values")
 end
 
 local function test_config_command_shows_settings_before_prompting()
     cleanup_splitasm()
 
     -- Arrange
-    splitasm.setup({ auto_sync = true, clean_asm = false })
+    splitasm.setup({ auto_sync = true, hide_address = false })
     local calls = {}
     local original_show_config = splitasm.show_config
     local original_configure = splitasm.configure
@@ -231,7 +233,7 @@ local function test_setup_command_runs_guided_wizard()
     cleanup_splitasm()
 
     -- Arrange
-    splitasm.setup({ auto_sync = true, clean_asm = false })
+    splitasm.setup({ auto_sync = true, hide_address = false })
     local calls = {}
     local original_setup_wizard = splitasm.setup_wizard
 
@@ -253,7 +255,7 @@ local function test_toggle_sync_command_updates_config_and_notifies()
     cleanup_splitasm()
 
     -- Arrange
-    splitasm.setup({ auto_sync = true, clean_asm = false })
+    splitasm.setup({ auto_sync = true, hide_address = false })
 
     -- Act + Assert
     with_captured_notify(function(messages)
@@ -303,7 +305,7 @@ local function test_open_returns_early_when_runtime_has_no_output()
         end,
     }, function()
         with_captured_notify(function()
-            splitasm.setup({ auto_sync = true, clean_asm = true })
+            splitasm.setup({ auto_sync = true, hide_address = true })
             splitasm.open("./missing-binary")
         end)
     end)
@@ -357,7 +359,7 @@ local function test_open_renders_filtered_output_and_syncs_from_source_cursor()
         end,
     }, function()
         with_captured_notify(function()
-            splitasm.setup({ auto_sync = true, clean_asm = true })
+            splitasm.setup({ auto_sync = true, hide_address = true })
             splitasm.open("./demo-bin")
         end)
     end)
@@ -447,7 +449,7 @@ local function test_open_can_disable_source_row_colors()
         end,
     }, function()
         with_captured_notify(function()
-            splitasm.setup({ auto_sync = true, clean_asm = true, source_row_colors = false })
+            splitasm.setup({ auto_sync = true, hide_address = true, source_row_colors = false })
             splitasm.open("./demo-bin")
         end)
     end)
@@ -496,7 +498,7 @@ local function test_open_repaints_stable_source_row_colors_across_refreshes()
         end,
     }, function()
         with_captured_notify(function()
-            splitasm.setup({ auto_sync = true, clean_asm = true, source_row_colors = true })
+            splitasm.setup({ auto_sync = true, hide_address = true, source_row_colors = true })
             splitasm.open("./demo-bin")
 
             local state = splitasm_state.get()
@@ -543,7 +545,7 @@ local function test_open_keeps_same_tone_within_source_row_and_shifts_between_so
         end,
     }, function()
         with_captured_notify(function()
-            splitasm.setup({ auto_sync = true, clean_asm = true, source_row_colors = true })
+            splitasm.setup({ auto_sync = true, hide_address = true, source_row_colors = true })
             splitasm.open("./demo-bin")
         end)
     end)
@@ -603,7 +605,7 @@ local function test_open_keeps_existing_view_when_refresh_validation_fails()
             return { "Executable (override): " .. status.resolved_exec_path }
         end,
     }, function()
-        splitasm.setup({ auto_sync = true, clean_asm = true })
+        splitasm.setup({ auto_sync = true, hide_address = true })
         splitasm.open("./demo-bin")
     end)
 
@@ -689,7 +691,7 @@ local function test_open_remaps_container_debug_paths_to_local_source_files()
         with_captured_notify(function(messages)
             splitasm.setup({
                 auto_sync = true,
-                clean_asm = true,
+                hide_address = true,
                 source_path_mappings = {
                     { from = "/work/src", to = source_dir },
                 },
@@ -750,7 +752,7 @@ local function test_open_infers_container_debug_paths_from_current_file()
         end,
     }, function()
         with_captured_notify(function(messages)
-            splitasm.setup({ auto_sync = true, clean_asm = true })
+            splitasm.setup({ auto_sync = true, hide_address = true })
             splitasm.open("./docker-demo-bin")
 
             local state = splitasm_state.get()

@@ -48,6 +48,28 @@ function M.setup(splitasm)
         desc = "Toggle automatic synchronization between source and assembly",
     })
 
+    create_command("SplitAsmToggleLineNumbers", function()
+        local enabled = splitasm.toggle_line_numbers()
+        vim.notify(
+            enabled and "SplitAsm line numbers enabled" or "SplitAsm line numbers disabled",
+            vim.log.levels.INFO,
+            { title = "splitasm" }
+        )
+    end, {
+        desc = "Toggle line number column in assembly view",
+    })
+
+    create_command("SplitAsmToggleHideAddress", function()
+        local enabled = splitasm.toggle_hide_address()
+        vim.notify(
+            enabled and "SplitAsm addresses hidden" or "SplitAsm addresses shown",
+            vim.log.levels.INFO,
+            { title = "splitasm" }
+        )
+    end, {
+        desc = "Toggle assembly address visibility",
+    })
+
     registered = true
 end
 

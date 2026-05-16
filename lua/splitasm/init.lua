@@ -119,6 +119,16 @@ function M.toggle_auto_sync(opts)
     return toggle_auto_sync(opts.notify)
 end
 
+function M.toggle_line_numbers()
+    local enabled = splitasm_config.toggle_line_numbers()
+    return enabled
+end
+
+function M.toggle_hide_address()
+    local enabled = splitasm_config.toggle_hide_address()
+    return enabled
+end
+
 function M.configure()
     local config = get_config()
     prompt_for_compiler_command(config, { setup_mode = false })
@@ -173,14 +183,14 @@ function M.open(exec_path_override)
     local asm_lines = vim.split(session.asm_output, "\n", { plain = true, trimempty = false })
 
     local parsed = parser.parse(asm_lines, {
-        clean_asm = config.clean_asm,
+        clean_asm = config.hide_address,
         source_path_mappings = config.source_path_mappings,
         current_source_path = current_file,
     })
     local filtered_lines = splitasm_state.apply_parsed_asm(parsed)
 
     view.ensure_asm_buffer(state)
-    if not view.render_asm_buffer(state, filtered_lines, { source_row_colors = config.source_row_colors }) then
+    if not view.render_asm_buffer(state, filtered_lines, config) then
         return
     end
 

@@ -178,7 +178,7 @@ local function main()
     vim.cmd("edit " .. vim.fn.fnameescape(fixture.source_path))
     splitasm.setup({
         executable_path = binary_path,
-        clean_asm = true,
+        hide_address = true,
         auto_sync = true,
         source_path_mappings = {
             { from = "/work/src", to = fixture.fixture_dir },

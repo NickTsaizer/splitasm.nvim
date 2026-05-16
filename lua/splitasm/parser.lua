@@ -316,20 +316,29 @@ function M.build_line_map(asm_lines, opts)
     return file_line_maps, asm_to_source, asm_to_file, asm_metadata
 end
 
-local function normalize_instruction_line(line)
-    local indent, _, instruction = line:match("^(%s*)(%x+):%s+(.+)$")
-    if not indent or not instruction then
-        return line
+local function normalize_instruction_line(line, strip_address)
+    local indent, addr_hex, rest = line:match("^(%s*)(%x+):%s+(.*)$")
+    if not indent or not addr_hex then
+        return nil
     end
 
-    instruction = instruction:gsub("%u+ PTR ", "")
-    instruction = instruction:gsub(",(%S)", ", %1")
-    return indent .. instruction
+    rest = rest:gsub("%u+ PTR ", "")
+    rest = rest:gsub(",(%S)", ", %1")
+    if strip_address then
+        return indent .. rest
+    else
+        return indent .. addr_hex .. ":   " .. rest
+    end
 end
 
 local function normalize_output_line(line, clean_asm)
     if is_source_marker(line) then
         return nil
+    end
+
+    local normalized = normalize_instruction_line(line, clean_asm)
+    if normalized then
+        return normalized
     end
 
     if not clean_asm then
@@ -345,7 +354,7 @@ local function normalize_output_line(line, clean_asm)
         return function_name .. ":"
     end
 
-    return normalize_instruction_line(line)
+    return line
 end
 
 function M.normalize_asm_lines(asm_lines, clean_asm)

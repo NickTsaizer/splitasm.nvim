@@ -5,8 +5,9 @@ local defaults = {
     executable_path = nil,
     source_path_mappings = {},
     auto_sync = true,
-    clean_asm = false,
+    hide_address = false,
     source_row_colors = true,
+    show_line_numbers = true,
 }
 
 local state = {
@@ -94,8 +95,9 @@ local function normalize_config(user_config)
         executable_path = normalize_string(user_config.executable_path, "executable_path"),
         source_path_mappings = normalize_source_path_mappings(user_config.source_path_mappings),
         auto_sync = normalize_boolean(user_config.auto_sync, "auto_sync"),
-        clean_asm = normalize_boolean(user_config.clean_asm, "clean_asm"),
+        hide_address = normalize_boolean(user_config.hide_address, "hide_address"),
         source_row_colors = normalize_boolean(user_config.source_row_colors, "source_row_colors"),
+        show_line_numbers = normalize_boolean(user_config.show_line_numbers, "show_line_numbers"),
     }
 end
 
@@ -114,8 +116,9 @@ function M.describe(config)
         string.format("Executable path: %s", active_config.executable_path or "auto-detect from cwd"),
         string.format("Source path mappings: %d configured", #(active_config.source_path_mappings or {})),
         string.format("Auto-sync: %s", active_config.auto_sync and "enabled" or "disabled"),
-        string.format("Clean assembly: %s", active_config.clean_asm and "enabled" or "disabled"),
+        string.format("Hide address: %s", active_config.hide_address and "enabled" or "disabled"),
         string.format("Source row colors: %s", active_config.source_row_colors and "enabled" or "disabled"),
+        string.format("Show line numbers: %s", active_config.show_line_numbers and "enabled" or "disabled"),
     }
 end
 
@@ -141,6 +144,16 @@ end
 function M.toggle_auto_sync()
     state.config.auto_sync = not state.config.auto_sync
     return state.config.auto_sync
+end
+
+function M.toggle_line_numbers()
+    state.config.show_line_numbers = not state.config.show_line_numbers
+    return state.config.show_line_numbers
+end
+
+function M.toggle_hide_address()
+    state.config.hide_address = not state.config.hide_address
+    return state.config.hide_address
 end
 
 return M

@@ -32,6 +32,10 @@ local function number_group_name(index, tone)
     return palette_group_name(index, tone) .. "Number"
 end
 
+local function address_group_name(index, tone)
+    return palette_group_name(index, tone) .. "Address"
+end
+
 local function contrast_foreground(color)
     local red, green, blue = color:match("^#?(%x%x)(%x%x)(%x%x)$")
     if not red then
@@ -81,6 +85,16 @@ local function ensure_highlight_groups()
             bg = darken_background(palette_entry.strong, 24),
             default = true,
         })
+        vim.api.nvim_set_hl(0, address_group_name(index, "Weak"), {
+            fg = contrast_foreground(palette_entry.weak),
+            bg = darken_background(palette_entry.weak, 24),
+            default = true,
+        })
+        vim.api.nvim_set_hl(0, address_group_name(index, "Strong"), {
+            fg = contrast_foreground(palette_entry.strong),
+            bg = darken_background(palette_entry.strong, 24),
+            default = true,
+        })
     end
 end
 
@@ -94,6 +108,7 @@ function M.group_for_source_line(source_id, source_line)
     return {
         text = text_group_name(palette_index, tone),
         number = number_group_name(palette_index, tone),
+        address = address_group_name(palette_index, tone),
     }
 end
 
@@ -113,19 +128,69 @@ function M.render(bufnr, asm_metadata, opts)
         return
     end
 
+    local show_line_numbers = opts.show_line_numbers
+    local hide_address = opts.hide_address
+
     ensure_highlight_groups()
 
     for asm_line, metadata in pairs(asm_metadata) do
         if metadata and metadata.source_id then
             local line = vim.api.nvim_buf_get_lines(bufnr, asm_line - 1, asm_line, false)[1] or ""
             local group = M.group_for_source_line(metadata.source_id, metadata.source_line)
-            vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NAMESPACE, asm_line - 1, 0, {
-                end_row = asm_line - 1,
-                end_col = #line,
-                hl_group = group.text,
-                number_hl_group = group.number,
-                priority = 140,
-            })
+
+            if show_line_numbers then
+                -- line number bg fill, text color on full line
+                vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NAMESPACE, asm_line - 1, 0, {
+                    end_row = asm_line - 1,
+                    end_col = #line,
+                    hl_group = group.text,
+                    number_hl_group = group.number,
+                    priority = 140,
+                })
+            elseif not hide_address then
+                -- line numbers off, addresses visible: bg fill on address, text color on instruction
+                local match_start, match_end = line:find("^%s*[0-9a-fA-F]+:")
+                if match_start then
+                    local hex_start = line:find("[0-9a-fA-F]", match_start)
+                    -- one space before hex, one space after colon
+                    local hl_start = math.max(0, hex_start - 3)   -- -1 for 0-indexed, -2 for two leading spaces
+                    local hl_end = match_end + 1               -- cover colon + one trailing space (end_col exclusive)
+                    vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NAMESPACE, asm_line - 1, hl_start, {
+                        end_row = asm_line - 1,
+                        end_col = hl_end,
+                        hl_group = group.address,
+                        priority = 140,
+                    })
+                    vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NAMESPACE, asm_line - 1, hl_end, {
+                        end_row = asm_line - 1,
+                        end_col = #line,
+                        hl_group = group.text,
+                        priority = 140,
+                    })
+                else
+                    -- fallback: no address found, text color on full line
+                    vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NAMESPACE, asm_line - 1, 0, {
+                        end_row = asm_line - 1,
+                        end_col = #line,
+                        hl_group = group.text,
+                        priority = 140,
+                    })
+                end
+            else
+                -- line numbers off, addresses hidden: single bg-filled placeholder at col 0
+                vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NAMESPACE, asm_line - 1, 0, {
+                    end_row = asm_line - 1,
+                    end_col = 1,
+                    hl_group = group.address,
+                    priority = 140,
+                })
+                vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NAMESPACE, asm_line - 1, 1, {
+                    end_row = asm_line - 1,
+                    end_col = #line,
+                    hl_group = group.text,
+                    priority = 140,
+                })
+            end
         end
     end
 end
