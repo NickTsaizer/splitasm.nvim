@@ -193,6 +193,8 @@ local function build_backend_status(backend, resolved_command)
 end
 
 local function discover_objdump_backends()
+    -- TODO(ivan): make it a parameter coming from the config right?
+    local preferred_backend = "gnu-objdump"
     local statuses = {}
     local selected_backend = nil
 
@@ -208,8 +210,14 @@ local function discover_objdump_backends()
 
         local status = build_backend_status(backend, resolved_command)
         statuses[#statuses + 1] = status
-        if not selected_backend and status.available then
+
+        if status.available then
+          if not selected_backend then
+              selected_backend = status
+          end
+          if status.id == preferred_backend then
             selected_backend = status
+          end
         end
     end
 
