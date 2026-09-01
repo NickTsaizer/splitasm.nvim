@@ -322,7 +322,7 @@ local function normalize_instruction_line(line, strip_address)
         return nil
     end
 
-    rest = rest:gsub("%u+ PTR ", "")
+    -- rest = rest:gsub("%u+ PTR ", "")
     rest = rest:gsub(",(%S)", ", %1")
     if strip_address then
         return indent .. rest
