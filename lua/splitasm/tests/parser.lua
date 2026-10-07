@@ -327,8 +327,27 @@ local function test_parse_prefers_explicit_mapping_over_inferred_fallback()
     assert_eq(parsed.asm_to_file[1], "/explicit/src/main.cpp", "asm file mapping should prefer explicit remaps")
 end
 
+local function test_build_line_map_accepts_llvm_objdump_markers()
+    -- Arrange: llvm-objdump prefixes -l markers with "; ", GNU objdump does not
+    local asm_lines = {
+        "; add():",
+        "; /tmp/example.c:10",
+        "    0000:       push    rbp",
+        "    0001:       ret",
+    }
+
+    -- Act
+    local file_line_maps, asm_to_source, asm_to_file = parser.build_line_map(asm_lines)
+
+    -- Assert
+    assert_range(file_line_maps["/tmp/example.c"][10], 3, 4, "llvm marker range")
+    assert_eq(asm_to_source[3], 10, "llvm marker source line")
+    assert_eq(asm_to_file[3], "/tmp/example.c", "llvm marker source file")
+end
+
 function M.run()
     test_build_line_map_tracks_multiple_source_ranges()
+    test_build_line_map_accepts_llvm_objdump_markers()
     test_parse_remaps_filtered_output_for_public_open_flow()
     test_parse_without_cleaning_preserves_non_source_lines()
     test_parse_with_cleaning_drops_empty_source_ranges()

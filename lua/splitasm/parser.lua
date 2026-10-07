@@ -236,7 +236,9 @@ local function looks_like_source_path(source_path)
 end
 
 parse_source_marker = function(line)
-    local source_path, source_line_num = line:match("^%s*(.+):(%d+).*$")
+    -- llvm-objdump prints -l markers as comments ("; /path/file.c:12");
+    -- GNU objdump prints the bare path. Tolerate the optional "; " prefix.
+    local source_path, source_line_num = line:match("^[%s;]*(.+):(%d+).*$")
     if not source_path or not source_line_num or not looks_like_source_path(source_path) then
         return nil
     end
